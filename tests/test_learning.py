@@ -48,7 +48,7 @@ def test_delta_td_learns_the_us_magnitude_as_a_step_and_cancels_it_at_the_us():
 
 
 def test_delta_td_default_reproduces_the_ramp_and_is_bounded_on_probe_trials():
-    """Default: gamma as Ludvig, CS offset consumes the prediction. Ramp on reinforced trials, no explosion without US."""
+    """Default: gamma as Ludvig, US or CS offset cashes in the prediction. Ramp on reinforced trials, bounded without US."""
     model = simulate.build_model(ids.DELTA)
     results = simulate.run_protocol(model, tasks.timing_protocol(50, n_trials=500))
     trained = np.flatnonzero(~results[ids.PROBE])[-1]

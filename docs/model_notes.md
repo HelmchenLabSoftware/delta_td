@@ -91,9 +91,11 @@ Defaults (`DELTA_*` in `constants.py`):
 * input $\mathbf{x}_t$ = unit pulse at the onset of each stimulus **including the US** (`DELTA_US_AS_STIMULUS = True`);
   CS offsets can be added as learnable events too (`include_offsets`, off by default);
 * $\gamma = 0.97$ (as the other models), $\lambda = 1$, $\eta = 0.05$ (Ludvig's step size);
-* `reset_rule = "offset"`: CS termination consumes the prediction (see Decisions below). Alternatives: `"us"` (the
-  paper's action-like reset moved to the US delivery), `"trial_end"` (only the trial-end correction of Eq. 26, which
-  then teaches the US-onset weight $w_{US} \to -1$), `"none"` (no reset at all);
+* `reset_rule = "event"`: the prediction is cashed in when the US arrives ($\delta^U = R - \hat V$, the ordinary TD
+  comparison) or, if no US comes, when the CS terminates (bounds the prediction on unreinforced trials; the offset is
+  not an input). Alternatives: `"offset"` (only the CS termination cashes in, the US is compared with nothing),
+  `"us"` (only the US, unbounded on omission), `"trial_end"` (only the trial-end correction of Eq. 26, which then
+  teaches the US-onset weight $w_{US} \to -1$), `"none"`;
 * optional leak `decay` of the integrator (mirrors the MS memory decay $d = 0.985$).
 
 The variant table below was obtained with $\gamma = 1$ and `"trial_end"` unless stated.
@@ -138,13 +140,14 @@ US time as an input, it has to find it through its own behaviour.
 
 ### Decisions (2026-09-30)
 
-* $\Delta$-TD must work for any $\gamma$ and without an action. The consuming event that replaces the lick is the
-  **termination of the CS** (`reset_rule = "offset"`): $\hat R_t = \hat V_t$ when a CS turns off. This is the same
-  information the CSC and presence representations use structurally (their features vanish at CS offset), and in
-  delay conditioning it coincides with the US time. On reinforced trials $\delta^U = R - \hat R \to 0$ at
-  convergence; on unreinforced trials $\delta^U = -\hat V$ (omission error, extinction) and the integrated value is
-  consumed exactly, so nothing explodes. The US is still an input event (its weight stays near 0 under this rule
-  because the offset already consumes the prediction).
+* $\Delta$-TD must work for any $\gamma$ and without an action. The prediction is cashed in
+  (`reset_rule = "event"`) **when the US arrives**, so that $\delta^U = R - \hat V$ is the ordinary TD comparison
+  and an early reward yields the positive error left by the unfinished ramp, **or, when no US comes, when the CS
+  terminates**, which bounds the integrated value on unreinforced trials ($\delta^U = -\hat V$, extinction). The CS
+  offset is not an input of the model, the representation stays a brief onset pulse; it is the same information the
+  CSC and presence representations use structurally (their features vanish at CS offset). In delay conditioning both
+  events coincide. The US is still an input event (its weight stays near 0 because the cash-in already removes the
+  prediction). Decided 2026-09-30 after comparing with the `"offset"`-only flavour on the 2008 early-reward task.
 * Why not the US onset weight alone: it cannot fire on omission trials, so with $\gamma < 1$ the value grows as
   $\gamma^{-t}$ until the trial ends ($\approx 900$). Partial cancellation by a learned offset weight does not help
   either: credit splits between the US onset and the CS offset (each $\approx -0.5$ when they coincide) and any
@@ -215,10 +218,10 @@ Choices the paper leaves open (all in `constants.py`):
 
 ### Findings (first pass, 2026-09-30)
 
-The 2008 figures compare CSC, MS, $\Delta$-TD (CS offset consumes) and the variant $\Delta$-TD (offset *or* US
-consumes, `ids.DELTA_EVENT`).
+The 2008 figures compare CSC, MS and $\Delta$-TD (default rule). The table also lists the earlier `"offset"`-only
+flavour (available as the model variant `ids.DELTA_OFFSET`), which motivated the default.
 
-| experiment | CSC | MS (paper's account) | $\Delta$-TD offset | $\Delta$-TD offset or US |
+| experiment | CSC | MS (paper's account) | $\Delta$-TD, only offset cashes in | $\Delta$-TD, US or offset (default) |
 |---|---|---|---|---|
 | acquisition | ramp, cue error 0.67, reward error vanishes | as paper (cue error, small extended errors, post-reward blip) | identical to CSC | identical to CSC |
 | omission | sharp $-1$ at 1 s | shallow extended dip ($\approx 10\%$ of the cue error) | sharp $-1$ at CS offset (= 1 s) | same |
@@ -226,14 +229,14 @@ consumes, `ids.DELTA_EVENT`).
 | early reward | $+1$ at 0.5 s **and** $-1$ at 1 s on every probe | small dip at 1 s, gone by the last probe | $+1$ at 0.5 s and $-1$ at 1 s: the reward is not credited against the standing prediction because nothing consumes it at 0.5 s | $+0.2$ at 0.5 s, **nothing** at 1 s from the first probe on (Hollerman & Schultz) |
 | multiple cues | late: error only at cue 1; cue 2 omitted: dip at 2 s, burst at 3 s | persistent error at cue 2, larger reward error when it is omitted | late: error only at cue 1; cue 2 omitted: **no error anywhere**, the integrator carries the prediction to the reward on its own (cue 2 never acquires weight) | same |
 
-Two conclusions. First, the "offset or US" rule is the one that behaves sensibly when the reward and the CS
-termination decouple, and it costs nothing in the 2012 tasks (see the variant figure, first two rows are identical),
-so it is the candidate default. Second, $\Delta$-TD's sharp, exactly timed omission and omission-like errors put it
+Two conclusions. First, cashing in at the US is what makes the reward comparison an ordinary TD error when the
+reward and the CS termination decouple, and it changes nothing in the 2012 tasks (see the variant figure, first two
+rows are identical); it is the default. Second, $\Delta$-TD's sharp, exactly timed omission and omission-like errors put it
 in the CSC camp; the graded errors that made the MS model attractive for dopamine data are absent, and the multiple
 cue result (no response to the reward after an omitted second cue) is a distinct, testable prediction.
 
 ## Supplementary figure: $\Delta$-TD consumption rules (`fs1_delta_variants`)
 
-Rows are the rules `offset`, `event`, `us` and `trial_end` ($\gamma = 1$ for the last one), columns the US
+Rows are the rules `offset`, `event` (default), `us` and `trial_end` ($\gamma = 1$ for the last one), columns the US
 prediction during acquisition, the response on a timing-set probe trial and the probe CR levels of blocking with an
 earlier CSB.

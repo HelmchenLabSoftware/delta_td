@@ -18,7 +18,7 @@ COLORS: dict[str, str] = {
     ids.MICROSTIMULUS: "#C44E52",
     ids.PRESENCE: "#55A868",
     ids.DELTA: "#8172B2",
-    ids.DELTA_EVENT: "#CC79A7",
+    ids.DELTA_OFFSET: "#CC79A7",
 }
 PROBE_LABELS: dict[str, str] = {"compound": "CSA + CSB", "A_alone": "CSA alone", "B_alone": "CSB alone"}
 PANEL_WIDTH = 3.2  # inches

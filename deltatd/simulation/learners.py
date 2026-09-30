@@ -89,10 +89,11 @@ class DeltaTD(Learner):
     w += eta (delta^U_t + gamma delta^C_t) z_{t-1} with delta^U_t = r_t - R_hat_t, where the imminent reward
     prediction R_hat_t equals V_t (the prediction is consumed and V restarts from zero) when the consuming event of
     the reset rule occurs and is zero otherwise. In the paper the consuming event was the lick action; here it is
-    - `"offset"`: the termination of a conditioned stimulus (the event that also ends the prediction of the CSC and
-      presence representations, and that coincides with the US time in delay conditioning),
-    - `"event"`: a CS termination or a US delivery, whichever comes first,
-    - `"us"`: the US delivery itself (hard-codes the reward timing),
+    - `"event"` (default): the US delivery, or a CS termination when no US comes. The CS offset is not an input of
+      the model; it only bounds the prediction on unreinforced trials (the event that also ends the prediction of the
+      CSC and presence representations),
+    - `"offset"`: only a CS termination (the US itself is then compared with nothing),
+    - `"us"`: only the US delivery (unbounded on unreinforced trials),
     - `"trial_end"` / `"none"`: no consuming event.
     Except under `"none"`, the trial-end correction w += eta delta^reset z with delta^reset = -V (Eq. 26) is applied
     and V restarts from zero at every trial. The eligibility trace z_t = gamma lambda z_{t-1} + x_t is reset at trial

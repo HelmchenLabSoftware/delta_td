@@ -69,7 +69,7 @@ DA_EARLY_REWARD_DELAY: int = 10  # Reward 0.5 s after the cue on probe trials
 DA_SECOND_CUE_DELAY: int = 40  # Second cue 2 s after the first cue (multiple cues)
 DA_MULTI_REWARD_DELAY: int = 60  # Reward 3 s after the first cue (multiple cues)
 DA_MULTI_EXAMPLE_TRIALS: tuple[int, ...] = (50, 1000)  # Early and late training (Fig. 8)
-DA_REPRESENTATIONS: tuple[str, ...] = ("csc", "microstimulus", "delta", "delta_event")  # Presence was not used in 2008
+DA_REPRESENTATIONS: tuple[str, ...] = ("csc", "microstimulus", "delta")  # Presence was not used in 2008
 
 # --- Delta-TD variants (supplementary figure) --------------------------------------------------------------------
 DELTA_VARIANT_RULES: tuple[str, ...] = ("offset", "event", "us", "trial_end")
@@ -83,7 +83,9 @@ DELTA_STEP_SIZE: float = STEP_SIZE  # Paper: 0.016 with 18-step trials; set equa
 # Fair-comparison settings: Ludvig's models get the reward timing from the US being a stimulus (its microstimuli
 # learn negative weights) and from the CS terminating at the US. Delta-TD therefore receives the same events as
 # learnable inputs instead of a hard-coded reward-timing reset (see docs/model_notes.md).
-DELTA_RESET_RULE: str = "offset"  # CS termination consumes the prediction (see ids.ResetRule and docs/model_notes.md)
+# The integrated prediction is cashed in (R_hat = V_hat, V_hat restarts) when the US arrives, or, if no US comes,
+# when the CS terminates. The CS offset is not an input; it only bounds the prediction on unreinforced trials.
+DELTA_RESET_RULE: str = "event"  # See ids.ResetRule and docs/model_notes.md
 DELTA_US_AS_STIMULUS: bool = True  # The US onset is an input event whose weight learns to cancel the prediction
 DELTA_INCLUDE_OFFSETS: bool = False  # Whether CS offsets are input events too (the CS offset coincides with the US)
 DELTA_DECAY: float = 1.0  # Leak of the integrated value estimate per step (0.985 would match the MS memory decay)

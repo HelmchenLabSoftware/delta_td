@@ -10,15 +10,15 @@ LUDVIG_REPRESENTATIONS: list[RepresentationID] = [CSC, MICROSTIMULUS, PRESENCE]
 ALL_REPRESENTATIONS: list[RepresentationID] = LUDVIG_REPRESENTATIONS + [DELTA]
 
 # Named model variants: a base representation with learner overrides, usable wherever a representation id is plotted
-ModelVariantID = Literal["delta_event"]
-DELTA_EVENT: ModelVariantID = "delta_event"  # Delta-TD whose prediction is consumed by a CS offset or a US delivery
-MODEL_VARIANTS: dict[str, tuple[RepresentationID, dict[str, object]]] = {DELTA_EVENT: (DELTA, {"reset_rule": "event"})}
+ModelVariantID = Literal["delta_offset"]
+DELTA_OFFSET: ModelVariantID = "delta_offset"  # Delta-TD whose prediction is only consumed by a CS offset (not by the US)
+MODEL_VARIANTS: dict[str, tuple[RepresentationID, dict[str, object]]] = {DELTA_OFFSET: (DELTA, {"reset_rule": "offset"})}
 REPRESENTATION_LABELS: dict[str, str] = {
     CSC: "CSC",
     MICROSTIMULUS: "Microstimulus",
     PRESENCE: "Presence",
     DELTA: r"$\Delta$-TD",
-    DELTA_EVENT: r"$\Delta$-TD (offset or US consumes)",
+    DELTA_OFFSET: r"$\Delta$-TD (only CS offset consumes)",
 }
 
 
@@ -67,15 +67,15 @@ STIMULI: tuple[StimulusID, ...] = (CS_A, CS_B, US)
 # How the delta-TD model determines the imminent reward prediction R_hat that resets the integrated value estimate.
 # In Schoenfeld et al. the reset was tied to the lick action; classical conditioning has no action (open question).
 ResetRule = Literal["offset", "event", "us", "trial_end", "none"]
-RESET_ON_OFFSET: ResetRule = "offset"  # R_hat_t = V_hat_t whenever a CS turns off (the event ending CSC/presence predictions)
-RESET_ON_EVENT: ResetRule = "event"  # R_hat_t = V_hat_t whenever a CS turns off or a US is delivered
+RESET_ON_OFFSET: ResetRule = "offset"  # R_hat_t = V_hat_t only when a CS turns off (the US itself does not cash in)
+RESET_ON_EVENT: ResetRule = "event"  # R_hat_t = V_hat_t when a US is delivered, or when a CS turns off without US (default)
 RESET_ON_US: ResetRule = "us"  # R_hat_t = V_hat_t whenever a US is delivered (hard-coded reward timing) + trial-end reset
 RESET_AT_TRIAL_END: ResetRule = "trial_end"  # V_hat is only reset (with the corresponding TD error) at trial end
 RESET_NONE: ResetRule = "none"  # No reset at all: only learned input-event weights (and a leak) can bring V_hat down
 
 DELTA_VARIANT_LABELS: dict[str, str] = {
-    RESET_ON_OFFSET: "CS offset consumes",
-    RESET_ON_EVENT: "CS offset or US consumes",
+    RESET_ON_OFFSET: "only CS offset consumes",
+    RESET_ON_EVENT: "US or CS offset consumes (default)",
     RESET_ON_US: "US consumes",
     RESET_AT_TRIAL_END: r"trial end only ($\gamma = 1$)",
 }
