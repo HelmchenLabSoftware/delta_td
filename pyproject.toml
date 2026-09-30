@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=70.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "deltatd"
+version = "0.1"
+description = "Comparing the integrated value-change (delta-TD) model with classical TD stimulus representations of conditioning"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+    {name = "Matthias Chinyen Tsai", email = "matthias.chinyen.tsai@gmail.com"}
+]
+dependencies = [
+    "numpy>=1.26",
+    "matplotlib>=3.8",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["deltatd*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

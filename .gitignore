@@ -216,3 +216,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Simulation results are regenerated in about a minute with `python main.py simulate`
+results/
