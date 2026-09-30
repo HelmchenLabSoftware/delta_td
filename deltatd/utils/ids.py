@@ -8,25 +8,54 @@ PRESENCE: RepresentationID = "presence"  # Single element per stimulus, active w
 DELTA: RepresentationID = "delta"  # Integrated value-change model (Schoenfeld et al. 2024, Supplementary Note 2)
 LUDVIG_REPRESENTATIONS: list[RepresentationID] = [CSC, MICROSTIMULUS, PRESENCE]
 ALL_REPRESENTATIONS: list[RepresentationID] = LUDVIG_REPRESENTATIONS + [DELTA]
-REPRESENTATION_LABELS: dict[RepresentationID, str] = {
+
+# Named model variants: a base representation with learner overrides, usable wherever a representation id is plotted
+ModelVariantID = Literal["delta_event"]
+DELTA_EVENT: ModelVariantID = "delta_event"  # Delta-TD whose prediction is consumed by a CS offset or a US delivery
+MODEL_VARIANTS: dict[str, tuple[RepresentationID, dict[str, object]]] = {DELTA_EVENT: (DELTA, {"reset_rule": "event"})}
+REPRESENTATION_LABELS: dict[str, str] = {
     CSC: "CSC",
     MICROSTIMULUS: "Microstimulus",
     PRESENCE: "Presence",
     DELTA: r"$\Delta$-TD",
+    DELTA_EVENT: r"$\Delta$-TD (offset or US consumes)",
 }
+
+
+def base_representation(model: str) -> RepresentationID:
+    """Representation underlying a representation id or a model variant id."""
+    return MODEL_VARIANTS[model][0] if model in MODEL_VARIANTS else model
 
 # Identifiers of the studies whose experiments are reproduced
 StudyID = Literal["ludvig2012", "ludvig2008"]
 LUDVIG2012: StudyID = "ludvig2012"  # Ludvig, Sutton & Kehoe (2012) Learning & Behavior 40:305-319
 LUDVIG2008: StudyID = "ludvig2008"  # Ludvig, Sutton & Kehoe (2008) Neural Computation 20:3034-3054
 
-# Identifiers of the experiments of Ludvig et al. (2012)
-ExperimentID = Literal["acquisition", "timing", "blocking", "blocking_isi_change", "overshadowing"]
-ACQUISITION: ExperimentID = "acquisition"  # Fig. 2 and 3
-TIMING: ExperimentID = "timing"  # Fig. 4
-BLOCKING: ExperimentID = "blocking"  # Fig. 5
-BLOCKING_ISI_CHANGE: ExperimentID = "blocking_isi_change"  # Fig. 6
-OVERSHADOWING: ExperimentID = "overshadowing"  # Fig. 7
+# Identifiers of the experiments of Ludvig et al. (2012) and (2008)
+ExperimentID = Literal[
+    "acquisition",
+    "timing",
+    "blocking",
+    "blocking_isi_change",
+    "overshadowing",
+    "delta_variants",
+    "dopamine_acquisition",
+    "reward_omission",
+    "partial_reinforcement",
+    "early_reward",
+    "multiple_cues",
+]
+ACQUISITION: ExperimentID = "acquisition"  # 2012 Fig. 2 and 3
+TIMING: ExperimentID = "timing"  # 2012 Fig. 4
+BLOCKING: ExperimentID = "blocking"  # 2012 Fig. 5
+BLOCKING_ISI_CHANGE: ExperimentID = "blocking_isi_change"  # 2012 Fig. 6
+OVERSHADOWING: ExperimentID = "overshadowing"  # 2012 Fig. 7
+DELTA_VARIANTS: ExperimentID = "delta_variants"  # Supplementary: delta-TD consumption-rule variants on 2012 tasks
+DA_ACQUISITION: ExperimentID = "dopamine_acquisition"  # 2008 Fig. 3
+REWARD_OMISSION: ExperimentID = "reward_omission"  # 2008 Fig. 4
+PARTIAL_REINFORCEMENT: ExperimentID = "partial_reinforcement"  # 2008 Fig. 6
+EARLY_REWARD: ExperimentID = "early_reward"  # 2008 Fig. 7
+MULTIPLE_CUES: ExperimentID = "multiple_cues"  # 2008 Fig. 8
 
 # Stimulus identifiers. The unconditioned stimulus is itself a stimulus that can spawn representation elements.
 StimulusID = Literal["A", "B", "US"]
@@ -37,11 +66,19 @@ STIMULI: tuple[StimulusID, ...] = (CS_A, CS_B, US)
 
 # How the delta-TD model determines the imminent reward prediction R_hat that resets the integrated value estimate.
 # In Schoenfeld et al. the reset was tied to the lick action; classical conditioning has no action (open question).
-ResetRule = Literal["offset", "us", "trial_end", "none"]
+ResetRule = Literal["offset", "event", "us", "trial_end", "none"]
 RESET_ON_OFFSET: ResetRule = "offset"  # R_hat_t = V_hat_t whenever a CS turns off (the event ending CSC/presence predictions)
+RESET_ON_EVENT: ResetRule = "event"  # R_hat_t = V_hat_t whenever a CS turns off or a US is delivered
 RESET_ON_US: ResetRule = "us"  # R_hat_t = V_hat_t whenever a US is delivered (hard-coded reward timing) + trial-end reset
 RESET_AT_TRIAL_END: ResetRule = "trial_end"  # V_hat is only reset (with the corresponding TD error) at trial end
 RESET_NONE: ResetRule = "none"  # No reset at all: only learned input-event weights (and a leak) can bring V_hat down
+
+DELTA_VARIANT_LABELS: dict[str, str] = {
+    RESET_ON_OFFSET: "CS offset consumes",
+    RESET_ON_EVENT: "CS offset or US consumes",
+    RESET_ON_US: "US consumes",
+    RESET_AT_TRIAL_END: r"trial end only ($\gamma = 1$)",
+}
 
 # Keys of the arrays recorded during a simulated protocol
 RecordKey = Literal["value", "response", "td_error", "cr_level", "peak_time", "probe", "label", "us_time", "cs_onset"]

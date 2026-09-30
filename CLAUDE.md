@@ -17,7 +17,7 @@ by `unibe-cns/TopDownOFC` but should evolve with this project's needs rather tha
 ```
 python main.py simulate   # run all simulations -> results/simulation/<study>/<experiment>/*.npz (~1 min)
 python main.py plot       # plot all figures -> figures/<study>/*.pdf and *.png (default command)
-python main.py all        # both; --representations csc microstimulus presence delta restricts the models
+python main.py all        # both; --representations csc microstimulus presence delta and --studies ludvig2012 ludvig2008 restrict
 python -m pytest          # unit tests (tests/)
 ```
 
@@ -37,6 +37,8 @@ matplotlib only (no torch). Figures are saved as PDF and PNG, look at the PNGs t
   `run_protocol(model, protocol)` returns a dict of arrays keyed by `ids.RecordKey`, saved with `np.savez_compressed`.
 - `figures/<study>/<figure>.py`: `CONDITIONS` maps condition name -> protocol factory; `simulate()` runs every
   representation through every condition via `helper.simulate_conditions`; `plot()` loads with `helper.load`.
+  The 2008 modules pass `model_factory=simulate.build_dopamine_model` (parameters in `simulate.DOPAMINE_PARAMETERS`)
+  and use only `constants.DA_REPRESENTATIONS`. `fs1_delta_variants` simulates the delta-TD consumption rules itself.
 
 Adding an experiment: add an `ExperimentID` in `ids.py`, parameters in `constants.py`, a protocol builder in
 `tasks.py`, a figure module registered in `figures/<study>/__init__.py::MODULES`, and a test in `tests/`.

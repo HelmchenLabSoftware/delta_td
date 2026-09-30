@@ -156,3 +156,108 @@ def overshadowing_protocol(
     """Overshadowing: A + B trained in compound (or B alone when `isi_a` is None), then probe trials (Fig. 7)."""
     compound = {ids.CS_B: isi_b} if isi_a is None else {ids.CS_A: isi_a, ids.CS_B: isi_b}
     return [delay_trial(compound, label="train") for _ in range(n_trials)] + probe_trials(compound)
+
+
+# --- Dopamine experiments of Ludvig, Sutton & Kehoe (2008) -------------------------------------------------------
+
+
+def cue_trial(
+    cues: dict[str, int],
+    reward_time: int | None = None,
+    reward_magnitude: float = c.US_MAGNITUDE,
+    cue_durations: dict[str, int] | None = None,
+    duration: int = c.DA_TRIAL_DURATION,
+    probe: bool = False,
+    label: str = "",
+) -> Trial:
+    """Trial of the dopamine experiments: cues at given times, optional reward, 500-step trial.
+
+    :param cues: onset time step of each cue (relative to the trial start).
+    :param reward_time: time step of the reward, or None.
+    :param cue_durations: duration of each cue; by default a cue lasts until the usual reward time
+        (`DA_CUE_TIME + DA_REWARD_DELAY`, or the multiple-cue reward time if the cue starts later) when
+        `DA_CUE_LASTS_UNTIL_REWARD` is set, and one time step otherwise.
+    """
+    cue_durations = cue_durations or {}
+    stimuli = {}
+    for cue, t_on in cues.items():
+        if cue in cue_durations:
+            length = cue_durations[cue]
+        elif c.DA_CUE_LASTS_UNTIL_REWARD:
+            usual_reward = c.DA_CUE_TIME + (c.DA_MULTI_REWARD_DELAY if len(cues) > 1 else c.DA_REWARD_DELAY)
+            length = max(usual_reward - t_on, 1)
+        else:
+            length = 1
+        stimuli[cue] = (t_on, length)
+    return Trial(
+        stimuli=stimuli,
+        us_time=reward_time,
+        us_magnitude=reward_magnitude,
+        duration=duration,
+        probe=probe,
+        label=label,
+    )
+
+
+def dopamine_acquisition_protocol(n_trials: int = c.DA_N_TRIALS) -> Protocol:
+    """Cue at time 0, reward exactly 1 s later, on every trial (2008 Fig. 3)."""
+    t_reward = c.DA_CUE_TIME + c.DA_REWARD_DELAY
+    return [cue_trial({ids.CS_A: c.DA_CUE_TIME}, t_reward, label="train") for _ in range(n_trials)]
+
+
+def reward_omission_protocol(n_trials: int = c.DA_N_TRIALS) -> Protocol:
+    """Acquisition with the reward omitted on the last trial (2008 Fig. 4)."""
+    protocol = dopamine_acquisition_protocol(n_trials - 1)
+    protocol.append(cue_trial({ids.CS_A: c.DA_CUE_TIME}, None, probe=True, label="omission"))
+    return protocol
+
+
+def partial_reinforcement_protocol(
+    probability: float, n_trials: int = c.DA_N_TRIALS_PARTIAL, seed: int = c.DA_PARTIAL_SEED
+) -> Protocol:
+    """Reward with a fixed probability, then one rewarded and one omission test trial (2008 Fig. 6)."""
+    rng = np.random.default_rng(seed)
+    t_reward = c.DA_CUE_TIME + c.DA_REWARD_DELAY
+    rewarded = rng.random(n_trials) < probability
+    protocol = [
+        cue_trial({ids.CS_A: c.DA_CUE_TIME}, t_reward if r else None, label="train") for r in rewarded
+    ]
+    protocol.append(cue_trial({ids.CS_A: c.DA_CUE_TIME}, t_reward, probe=True, label="rewarded"))
+    protocol.append(cue_trial({ids.CS_A: c.DA_CUE_TIME}, None, probe=True, label="omission"))
+    return protocol
+
+
+def early_reward_protocol(n_trials: int = c.DA_N_TRIALS, n_probes: int = c.DA_N_EARLY_PROBES) -> Protocol:
+    """Acquisition followed by probe trials with the reward 0.5 s instead of 1 s after the cue (2008 Fig. 7)."""
+    protocol = dopamine_acquisition_protocol(n_trials)
+    t_early = c.DA_CUE_TIME + c.DA_EARLY_REWARD_DELAY
+    protocol += [cue_trial({ids.CS_A: c.DA_CUE_TIME}, t_early, probe=True, label="early") for _ in range(n_probes)]
+    return protocol
+
+
+def multiple_cues_protocol(n_trials: int = c.DA_N_TRIALS, test_after: tuple[int, ...] = c.DA_MULTI_EXAMPLE_TRIALS) -> Protocol:
+    """Two sequential cues (0 s and 2 s) before the reward (3 s); after `test_after` trials, one test trial with both
+    cues and one with the second cue omitted are inserted (2008 Fig. 8)."""
+    t_second = c.DA_CUE_TIME + c.DA_SECOND_CUE_DELAY
+    t_reward = c.DA_CUE_TIME + c.DA_MULTI_REWARD_DELAY
+    both = {ids.CS_A: c.DA_CUE_TIME, ids.CS_B: t_second}
+    protocol = []
+    for k in range(1, n_trials + 1):
+        protocol.append(cue_trial(both, t_reward, label="train"))
+        if k in test_after:
+            protocol.append(cue_trial(both, t_reward, probe=True, label=f"both_{k}"))
+            protocol.append(
+                cue_trial(
+                    {ids.CS_A: c.DA_CUE_TIME},
+                    t_reward,
+                    cue_durations={ids.CS_A: both_duration(c.DA_CUE_TIME, t_reward)},
+                    probe=True,
+                    label=f"omitted_{k}",
+                )
+            )
+    return protocol
+
+
+def both_duration(t_on: int, t_reward: int) -> int:
+    """Cue duration when the cue lasts until the reward (or one step)."""
+    return max(t_reward - t_on, 1) if c.DA_CUE_LASTS_UNTIL_REWARD else 1

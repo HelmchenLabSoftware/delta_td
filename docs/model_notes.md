@@ -180,10 +180,60 @@ Not reproduced so far: the faster learning of the presence representation with l
 undocumented details of the response integrator (reset per trial or not) and on the off-by-one conventions of the
 TD update, which the paper does not fully specify.
 
-## Ludvig et al. (2008): dopamine / TD-error experiments (not yet implemented)
+## Ludvig et al. (2008): dopamine / TD-error experiments
 
-Simple acquisition, reward omission, partial reinforcement, early reward and multiple cues, with the TD error
-(rather than a CR) as the observable and parameters $\lambda = 0.95$, $\alpha = 0.01$, $\gamma = 0.98$, $n = 50$
-microstimuli, $\sigma = 0.08$, 20 time steps per second, ITI 500 steps. The reward omission and early reward
-experiments are the most diagnostic for $\Delta$-TD because its error at the usual US time depends entirely on the
-reset rule.
+Same TD($\lambda$) machinery, the observable is the TD error $\delta_t$ (dopamine response) and the value, no
+response rule. Parameters of Section 2 of the paper (`constants.DA_*`): $\lambda = 0.95$, $\alpha = 0.01$,
+$\gamma = 0.98$, $m = 50$ microstimuli, $\sigma = 0.08$, $d = 0.985$, 20 time steps per second, trial onsets 500
+steps apart (simulated as 500-step trials). The presence representation was not part of that study, so the figures
+compare CSC, MS and $\Delta$-TD.
+
+| figure | experiment | protocol |
+|---|---|---|
+| Fig. 3 | simple acquisition | cue at 0 s, reward at 1 s, 1000 trials; $\delta$ and $V$ on trials 1, 100, 1000 |
+| Fig. 4 | reward omission | as above, reward omitted on trial 1000 |
+| Fig. 6 | partial reinforcement | reward with p = 0, 0.25, 0.5, 0.75, 1 for 500 trials (seeded schedule), then one rewarded and one omission test trial |
+| Fig. 7 | early reward | 1000 trials, then 15 probes with the reward at 0.5 s; first and last probe shown |
+| Fig. 8 | multiple cues | cues at 0 s and 2 s, reward at 3 s; test trials with both cues and with the second cue omitted after 50 and 1000 trials |
+
+Choices the paper leaves open (all in `constants.py`):
+
+* **Cue duration.** The paper only gives cue onsets. Default `DA_CUE_LASTS_UNTIL_REWARD = True`: the cue stays on
+  until the usual reward time (delay conditioning as in Fiorillo et al. 2003, and the same convention as the 2012
+  tasks). With a one-step cue the MS model is unchanged (onset-triggered traces), the delay-line CSC is unchanged,
+  but $\Delta$-TD with the CS-offset rule consumes its prediction one step after the cue and cannot predict the
+  reward at all. **The 2008 tasks are therefore where the consumption rule of $\Delta$-TD is really tested**: on
+  early-reward probes the reward arrives while the cue is still on, so under the `"offset"` rule the prediction is
+  not consumed by the reward but by the cue offset at the usual time, producing a positive error at the early reward
+  and a negative error at the usual time (like the CSC, unlike the data). The `"event"` rule (CS offset *or* US
+  consumes) removes the negative error. This is the concrete question the variant figure is meant to inform.
+* **CSC delay line.** The CSC of the dopamine models is a tapped delay line started by the cue onset
+  (`gated_by_presence = False`), of length `DA_CSC_MAX_DURATION = 200` steps (10 s): long enough to cover every
+  event, shorter than the ITI so that the reward's own delay line cannot predict the next trial's cue.
+* **Partial reinforcement schedule.** Bernoulli per trial with a fixed seed; the two test trials are appended after
+  training rather than picked from it.
+
+### Findings (first pass, 2026-09-30)
+
+The 2008 figures compare CSC, MS, $\Delta$-TD (CS offset consumes) and the variant $\Delta$-TD (offset *or* US
+consumes, `ids.DELTA_EVENT`).
+
+| experiment | CSC | MS (paper's account) | $\Delta$-TD offset | $\Delta$-TD offset or US |
+|---|---|---|---|---|
+| acquisition | ramp, cue error 0.67, reward error vanishes | as paper (cue error, small extended errors, post-reward blip) | identical to CSC | identical to CSC |
+| omission | sharp $-1$ at 1 s | shallow extended dip ($\approx 10\%$ of the cue error) | sharp $-1$ at CS offset (= 1 s) | same |
+| partial reinforcement | cue error $\propto p$, reward error $\propto 1-p$ | same, extended omission dips | same as CSC, sharp omission dips | same |
+| early reward | $+1$ at 0.5 s **and** $-1$ at 1 s on every probe | small dip at 1 s, gone by the last probe | $+1$ at 0.5 s and $-1$ at 1 s: the reward is not credited against the standing prediction because nothing consumes it at 0.5 s | $+0.2$ at 0.5 s, **nothing** at 1 s from the first probe on (Hollerman & Schultz) |
+| multiple cues | late: error only at cue 1; cue 2 omitted: dip at 2 s, burst at 3 s | persistent error at cue 2, larger reward error when it is omitted | late: error only at cue 1; cue 2 omitted: **no error anywhere**, the integrator carries the prediction to the reward on its own (cue 2 never acquires weight) | same |
+
+Two conclusions. First, the "offset or US" rule is the one that behaves sensibly when the reward and the CS
+termination decouple, and it costs nothing in the 2012 tasks (see the variant figure, first two rows are identical),
+so it is the candidate default. Second, $\Delta$-TD's sharp, exactly timed omission and omission-like errors put it
+in the CSC camp; the graded errors that made the MS model attractive for dopamine data are absent, and the multiple
+cue result (no response to the reward after an omitted second cue) is a distinct, testable prediction.
+
+## Supplementary figure: $\Delta$-TD consumption rules (`fs1_delta_variants`)
+
+Rows are the rules `offset`, `event`, `us` and `trial_end` ($\gamma = 1$ for the last one), columns the US
+prediction during acquisition, the response on a timing-set probe trial and the probe CR levels of blocking with an
+earlier CSB.

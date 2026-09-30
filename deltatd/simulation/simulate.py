@@ -20,6 +20,47 @@ class Model:
     name: str
 
 
+DOPAMINE_PARAMETERS: dict[str, dict[str, dict[str, Any]]] = {
+    ids.CSC: {
+        "representation": {"max_duration": c.DA_CSC_MAX_DURATION, "gated_by_presence": False},
+        "learner": {"alpha": c.DA_STEP_SIZE, "gamma": c.DA_DISCOUNT, "lam": c.DA_TRACE_DECAY},
+    },
+    ids.MICROSTIMULUS: {
+        "representation": {
+            "n_microstimuli": c.DA_N_MICROSTIMULI,
+            "sigma": c.DA_MICROSTIMULUS_WIDTH,
+            "decay": c.DA_MEMORY_DECAY,
+        },
+        "learner": {"alpha": c.DA_STEP_SIZE, "gamma": c.DA_DISCOUNT, "lam": c.DA_TRACE_DECAY},
+    },
+    ids.PRESENCE: {
+        "representation": {},
+        "learner": {"alpha": c.DA_STEP_SIZE, "gamma": c.DA_DISCOUNT, "lam": c.DA_TRACE_DECAY},
+    },
+    ids.DELTA: {
+        "representation": {},
+        "learner": {"eta": c.DA_STEP_SIZE, "gamma": c.DA_DISCOUNT},
+    },
+}
+
+
+def build_dopamine_model(model: str, **learner_overrides: Any) -> Model:
+    """Model with the parameters of Ludvig et al. (2008) (see `DOPAMINE_PARAMETERS`).
+
+    :param model: a representation id or a model variant id (`ids.MODEL_VARIANTS`).
+    """
+    representation = ids.base_representation(model)
+    variant_overrides = ids.MODEL_VARIANTS[model][1] if model in ids.MODEL_VARIANTS else {}
+    parameters = DOPAMINE_PARAMETERS[representation]
+    built = build_model(
+        representation,
+        representation_kwargs=parameters["representation"],
+        learner_kwargs={**parameters["learner"], **variant_overrides, **learner_overrides},
+    )
+    built.name = model
+    return built
+
+
 def build_model(
     representation: ids.RepresentationID,
     stimuli: tuple[str, ...] = ids.STIMULI,
@@ -27,7 +68,7 @@ def build_model(
     learner_kwargs: dict[str, Any] | None = None,
     response_kwargs: dict[str, Any] | None = None,
 ) -> Model:
-    """Construct the model associated with a representation identifier using the default parameters.
+    """Construct the model associated with a representation identifier using the default (2012) parameters.
 
     The three Ludvig representations are combined with TD(lambda); the delta identifier selects the onset
     representation combined with the delta-TD learner.
@@ -62,7 +103,7 @@ def run_protocol(model: Model, protocol: tasks.Protocol, us_as_stimulus: bool | 
     :returns: dictionary of arrays keyed by `ids.RecordKey`.
     """
     if us_as_stimulus is None:
-        us_as_stimulus = c.DELTA_US_AS_STIMULUS if model.name == ids.DELTA else True
+        us_as_stimulus = c.DELTA_US_AS_STIMULUS if ids.base_representation(model.name) == ids.DELTA else True
     stimulus_ids = model.representation.stimuli
     us_idx = stimulus_ids.index(ids.US)
     cs_idx = [k for k in range(len(stimulus_ids)) if k != us_idx]

@@ -91,6 +91,7 @@ class DeltaTD(Learner):
     the reset rule occurs and is zero otherwise. In the paper the consuming event was the lick action; here it is
     - `"offset"`: the termination of a conditioned stimulus (the event that also ends the prediction of the CSC and
       presence representations, and that coincides with the US time in delay conditioning),
+    - `"event"`: a CS termination or a US delivery, whichever comes first,
     - `"us"`: the US delivery itself (hard-codes the reward timing),
     - `"trial_end"` / `"none"`: no consuming event.
     Except under `"none"`, the trial-end correction w += eta delta^reset z with delta^reset = -V (Eq. 26) is applied
@@ -136,6 +137,8 @@ class DeltaTD(Learner):
             return us_present
         if self.reset_rule == ids.RESET_ON_OFFSET:
             return cs_offset
+        if self.reset_rule == ids.RESET_ON_EVENT:
+            return cs_offset or us_present
         return False
 
     def step(

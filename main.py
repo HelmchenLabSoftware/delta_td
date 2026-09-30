@@ -3,7 +3,8 @@
 >> python main.py simulate   # run all simulations (results/simulation)
 >> python main.py plot       # plot all figures from the saved results (figures/)
 >> python main.py all        # both
-Use --representations to restrict the models, e.g. `python main.py all --representations csc delta`.
+Use --representations to restrict the models and --studies to restrict the reproduced papers, e.g.
+`python main.py all --representations csc delta --studies ludvig2008`.
 """
 
 import argparse
@@ -23,8 +24,15 @@ if __name__ == "__main__":
         default=ids.ALL_REPRESENTATIONS,
         help="models to simulate or plot (default: all)",
     )
+    parser.add_argument(
+        "--studies",
+        nargs="+",
+        choices=(ids.LUDVIG2012, ids.LUDVIG2008),
+        default=(ids.LUDVIG2012, ids.LUDVIG2008),
+        help="studies whose experiments to simulate or plot (default: all)",
+    )
     args = parser.parse_args()
     if args.command in ("simulate", "all"):
-        deltatd.run_all.run(args.representations)
+        deltatd.run_all.run(args.representations, args.studies)
     if args.command in ("plot", "all"):
-        deltatd.plot_all.plot(args.representations)
+        deltatd.plot_all.plot(args.representations, args.studies)

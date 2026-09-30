@@ -44,6 +44,38 @@ OVERSHADOWING_ISI_B: int = 25  # ISI of the overshadowed stimulus B
 OVERSHADOWING_CONDITIONS: dict[str, int | None] = {"same": 25, "long": 50, "longer": 100, "none": None}  # ISI of A
 OVERSHADOWING_EXAMPLE: str = "long"  # Condition whose time courses are shown in Fig. 7c
 
+# --- Ludvig et al. (2008), Section 2 --------------------------------------------------------------------------------
+# Same model structure as 2012 but with the dopamine-experiment parameters; the observable is the TD error, not a CR.
+DA_DISCOUNT: float = 0.98
+DA_TRACE_DECAY: float = 0.95
+DA_STEP_SIZE: float = 0.01
+DA_N_MICROSTIMULI: int = 50
+DA_MICROSTIMULUS_WIDTH: float = 0.08
+DA_MEMORY_DECAY: float = 0.985
+DA_STEPS_PER_SECOND: int = 20
+DA_TRIAL_DURATION: int = 500  # Intertrial interval of 500 time steps between trial onsets
+DA_CSC_MAX_DURATION: int = 200  # Length of the CSC delay line (10 s): covers the trial events, shorter than the ITI so
+# that the reward's delay line cannot predict the next trial's cue (the paper does not state this length)
+DA_CUE_TIME: int = 20  # Cue onset within the trial (baseline before the cue)
+DA_REWARD_DELAY: int = 20  # Reward 1 s after the cue
+DA_CUE_LASTS_UNTIL_REWARD: bool = True  # Cue stays on until the usual reward time (delay conditioning); False: 1 step
+DA_N_TRIALS: int = 1000  # Simple acquisition, omission, early reward, multiple cues
+DA_EXAMPLE_TRIALS: tuple[int, ...] = (1, 100, 1000)  # Trials shown in Fig. 3 (1-based)
+DA_N_TRIALS_PARTIAL: int = 500  # Partial reinforcement
+DA_REWARD_PROBABILITIES: tuple[float, ...] = (0.0, 0.25, 0.5, 0.75, 1.0)
+DA_PARTIAL_SEED: int = 0  # Seed of the reward schedule of the partial reinforcement experiment
+DA_N_EARLY_PROBES: int = 15  # Early reward probe trials after training
+DA_EARLY_REWARD_DELAY: int = 10  # Reward 0.5 s after the cue on probe trials
+DA_SECOND_CUE_DELAY: int = 40  # Second cue 2 s after the first cue (multiple cues)
+DA_MULTI_REWARD_DELAY: int = 60  # Reward 3 s after the first cue (multiple cues)
+DA_MULTI_EXAMPLE_TRIALS: tuple[int, ...] = (50, 1000)  # Early and late training (Fig. 8)
+DA_REPRESENTATIONS: tuple[str, ...] = ("csc", "microstimulus", "delta", "delta_event")  # Presence was not used in 2008
+
+# --- Delta-TD variants (supplementary figure) --------------------------------------------------------------------
+DELTA_VARIANT_RULES: tuple[str, ...] = ("offset", "event", "us", "trial_end")
+DELTA_VARIANT_ISI: int = 25  # ISI of the acquisition time courses
+DELTA_VARIANT_PROBE_ISI: int = 50  # ISI of the timing-set probe trials
+
 # --- Delta-TD model (Schoenfeld et al. 2024, Supplementary Note 2) ------------------------------------------------
 DELTA_DISCOUNT: float = DISCOUNT  # Same discounting as the other models (the paper used 1); V_hat grows by 1/gamma per step
 DELTA_TRACE_DECAY: float = 1.0  # The paper integrated the eligibility trace without decay within a trial

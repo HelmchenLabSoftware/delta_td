@@ -18,6 +18,7 @@ COLORS: dict[str, str] = {
     ids.MICROSTIMULUS: "#C44E52",
     ids.PRESENCE: "#55A868",
     ids.DELTA: "#8172B2",
+    ids.DELTA_EVENT: "#CC79A7",
 }
 PROBE_LABELS: dict[str, str] = {"compound": "CSA + CSB", "A_alone": "CSA alone", "B_alone": "CSB alone"}
 PANEL_WIDTH = 3.2  # inches
@@ -58,20 +59,26 @@ def simulate_conditions(
     conditions: dict[str, Callable[[], tasks.Protocol]],
     representations: Iterable[str] = ids.ALL_REPRESENTATIONS,
     verbose: bool = True,
+    model_factory: Callable[[str], simulate.Model] = simulate.build_model,
 ) -> None:
     """Run every representation through every condition of an experiment and save the results.
 
     :param conditions: mapping of condition name to a factory returning the protocol of that condition.
+    :param model_factory: builds the model of a representation (default: the 2012 parameters).
     """
     for representation in representations:
         for condition, make_protocol in conditions.items():
             if verbose:
                 print(f"  {experiment}: {representation} / {condition}", flush=True)
-            model = simulate.build_model(representation)
+            model = model_factory(representation)
             results = simulate.run_protocol(model, make_protocol())
             simulate.save_results(paths.result_path(study, experiment, run_name(representation, condition)), results)
     if verbose:
         print(f"  {experiment}: done")
+
+
+def run_path(study: str, experiment: str, representation: str, condition: str):
+    return paths.result_path(study, experiment, run_name(representation, condition))
 
 
 def load(study: str, experiment: str, representation: str, condition: str) -> dict[str, np.ndarray]:
@@ -91,8 +98,16 @@ def relative_time(results: dict[str, np.ndarray], trial: int) -> np.ndarray:
     return np.arange(results[ids.VALUE].shape[1]) - results[ids.CS_ONSET][trial]
 
 
+def trial_index(results: dict[str, np.ndarray], label: str) -> int:
+    """Index of the (last) trial carrying `label`, probe or not."""
+    matches = np.flatnonzero(results[ids.LABEL] == label)
+    if matches.size == 0:
+        raise KeyError(f"No trial labelled '{label}'")
+    return int(matches[-1])
+
+
 def representation_panels(
-    representations: list[str], n_rows: int = 1, titles: list[str] | None = None
+    representations: list[str], n_rows: int = 1, titles: list[str] | None = None, sharey: bool | str = "row"
 ) -> tuple[plt.Figure, np.ndarray]:
     """Figure with one column per representation (and `n_rows` rows), titled by representation label by default."""
     fig, axes = plt.subplots(
@@ -100,7 +115,7 @@ def representation_panels(
         len(representations),
         figsize=(PANEL_WIDTH * len(representations), PANEL_HEIGHT * n_rows),
         squeeze=False,
-        sharey="row",
+        sharey=sharey,
     )
     titles = titles or [ids.REPRESENTATION_LABELS[representation] for representation in representations]
     for ax, title in zip(axes[0], titles):

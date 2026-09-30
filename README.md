@@ -12,9 +12,10 @@ representations of the TD model of conditioning:
 * the microstimulus model of dopamine responses of
   [Ludvig, Sutton & Kehoe (2008), *Neural Computation*](https://doi.org/10.1162/neco.2008.11-07-654).
 
-The first goal is to reproduce the classical conditioning simulations of Ludvig et al. (2012) (acquisition, ISI
-effects, response timing, blocking and overshadowing) and to add the $\Delta$-TD model as a fourth model to each
-comparison. See `docs/model_notes.md` for the equations, the modelling choices and the open questions.
+The simulations reproduce the classical conditioning experiments of Ludvig et al. (2012) (acquisition, ISI effects,
+response timing, blocking, overshadowing) and the dopamine / TD-error experiments of Ludvig et al. (2008) (simple
+acquisition, reward omission, partial reinforcement, early reward, multiple cues) and add the $\Delta$-TD model to
+each comparison. See `docs/model_notes.md` for the equations, the modelling choices and the open questions.
 
 ### Installation
 
@@ -37,6 +38,7 @@ python main.py all
 python main.py simulate       # simulations only -> results/simulation
 python main.py plot           # figures only (needs existing results) -> figures/
 python main.py all --representations csc delta   # restrict to some models
+python main.py all --studies ludvig2008          # restrict to one paper
 ```
 Run the tests:
 ```
@@ -58,8 +60,8 @@ deltatd/
     simulate.py                 model assembly, protocol runner, result I/O
   figures/
     helper.py                   plotting helpers and the simulate-all-conditions loop
-    ludvig2012/                 one module per figure of Ludvig et al. (2012), each with simulate() and plot()
-    ludvig2008/                 placeholder for the dopamine experiments of Ludvig et al. (2008)
+    ludvig2012/                 one module per figure of Ludvig et al. (2012) + fs1_delta_variants, each with simulate() and plot()
+    ludvig2008/                 one module per figure of Ludvig et al. (2008), dopamine / TD-error observables
 results/simulation/<study>/<experiment>/<representation>_<condition>.npz   (gitignored)
 figures/<study>/<figure>.pdf|png
 docs/model_notes.md             equations, notation mapping, open modelling questions, reproduction status

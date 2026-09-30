@@ -21,7 +21,9 @@ def simulate(representations: list[str] = ids.ALL_REPRESENTATIONS) -> None:
 def plot(representations: list[str] = ids.ALL_REPRESENTATIONS) -> None:
     """Top row: response time course on the last probe trial. Bottom row: peak time across probe trials."""
     helper.set_style()
-    fig, axes = helper.representation_panels(representations, n_rows=2)
+    fig, axes = helper.representation_panels(representations, n_rows=2, sharey=False)
+    for ax in axes[1, 1:]:
+        ax.sharey(axes[1, 0])
     for col, representation in enumerate(representations):
         for k, isi in enumerate(c.TIMING_ISIS):
             results = helper.load(STUDY, EXPERIMENT, representation, f"isi{isi}")
@@ -36,7 +38,7 @@ def plot(representations: list[str] = ids.ALL_REPRESENTATIONS) -> None:
         axes[0, col].set_xlabel("Time steps from CS onset")
         axes[1, col].set_xlabel("Trials")
         axes[1, col].set_ylim(0, c.TRIAL_DURATION - c.CS_ONSET_TIME)
-    axes[0, 0].set_ylabel("CR level (probe trial)")
+    axes[0, 0].set_ylabel("CR level (probe trial, own scale)")
     axes[1, 0].set_ylabel("Peak time (steps from CS onset)")
     axes[0, 0].legend(frameon=False)
     helper.save_figure(fig, STUDY, "f4_timing_probe_trials")

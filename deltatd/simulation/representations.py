@@ -64,10 +64,18 @@ class Presence(Representation):
 
 
 class CompleteSerialCompound(Representation):
-    """A distinct unit element for every time step since stimulus onset, active while the stimulus is present."""
+    """A distinct unit element for every time step since stimulus onset.
 
-    def __init__(self, stimuli: tuple[str, ...], max_duration: int = c.TRIAL_DURATION):
+    :param gated_by_presence: elements are only active while the stimulus is on (Ludvig et al. 2012). With False the
+        representation is a tapped delay line started by the onset that keeps ticking for `max_duration` steps
+        regardless of the stimulus duration (the CSC of the dopamine models, Montague et al. 1996).
+    """
+
+    def __init__(
+        self, stimuli: tuple[str, ...], max_duration: int = c.TRIAL_DURATION, gated_by_presence: bool = True
+    ):
         self.max_duration = max_duration
+        self.gated_by_presence = gated_by_presence
         super().__init__(stimuli)
 
     @property
@@ -78,7 +86,8 @@ class CompleteSerialCompound(Representation):
         self.age = np.full(self.n_stimuli, -1, dtype=int)  # Time steps since onset (-1 when not represented)
 
     def step(self, present: np.ndarray, onset: np.ndarray) -> np.ndarray:
-        continuing = present & ~onset & (self.age >= 0)
+        alive = present if self.gated_by_presence else np.ones_like(present)
+        continuing = alive & ~onset & (self.age >= 0)
         self.age = np.where(onset, 0, np.where(continuing, self.age + 1, -1))
         x = np.zeros(self.n_features)
         active = (self.age >= 0) & (self.age < self.max_duration)
