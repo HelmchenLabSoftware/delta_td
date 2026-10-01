@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from deltatd.figures import helper
 from deltatd.figures.ludvig2008 import common
-from deltatd.simulation import simulate as sim
 from deltatd.simulation import tasks
 from deltatd.utils import constants as c
 from deltatd.utils import ids
@@ -16,7 +15,7 @@ CONDITIONS = {"default": tasks.dopamine_acquisition_protocol}
 
 def simulate(representations: list[str] = ids.ALL_REPRESENTATIONS) -> None:
     helper.simulate_conditions(
-        STUDY, EXPERIMENT, CONDITIONS, common.representations_in(representations), model_factory=sim.build_dopamine_model
+        STUDY, EXPERIMENT, CONDITIONS, common.representations_in(representations), model_factory=common.MODEL_FACTORY
     )
 
 
@@ -28,14 +27,15 @@ def plot(representations: list[str] = ids.ALL_REPRESENTATIONS) -> None:
     fig, axes = helper.representation_panels(representations, n_rows=2)
     reward_s = c.DA_REWARD_DELAY / c.DA_STEPS_PER_SECOND
     for col, representation in enumerate(representations):
-        results = helper.load(STUDY, EXPERIMENT, representation, "default")
+        stats = helper.load_stats(STUDY, EXPERIMENT, representation, "default")
         for k, trial in enumerate(c.DA_EXAMPLE_TRIALS):
             shade = 0.35 + 0.65 * k / max(len(c.DA_EXAMPLE_TRIALS) - 1, 1)
             common.plot_error_and_value(
-                axes[:, col], results, trial - 1, color=helper.COLORS[representation], label=f"Trial {trial}", t_max=2.5
+                axes[:, col], stats, trial - 1, color=helper.COLORS[representation], label=f"Trial {trial}", t_max=2.5
             )
             for line in (axes[0, col].lines[-1], axes[1, col].lines[-1]):
                 line.set_alpha(shade)
+        helper.annotate_seeds(axes[0, col], stats)
         for ax in axes[:, col]:
             common.mark_events(ax, reward_s)
         axes[1, col].set_xlabel("Time from cue onset (s)")

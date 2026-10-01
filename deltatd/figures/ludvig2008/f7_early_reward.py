@@ -6,7 +6,6 @@ import numpy as np
 
 from deltatd.figures import helper
 from deltatd.figures.ludvig2008 import common
-from deltatd.simulation import simulate as sim
 from deltatd.simulation import tasks
 from deltatd.utils import constants as c
 from deltatd.utils import ids
@@ -18,7 +17,7 @@ CONDITIONS = {"default": tasks.early_reward_protocol}
 
 def simulate(representations: list[str] = ids.ALL_REPRESENTATIONS) -> None:
     helper.simulate_conditions(
-        STUDY, EXPERIMENT, CONDITIONS, common.representations_in(representations), model_factory=sim.build_dopamine_model
+        STUDY, EXPERIMENT, CONDITIONS, common.representations_in(representations), model_factory=common.MODEL_FACTORY
     )
 
 
@@ -30,12 +29,13 @@ def plot(representations: list[str] = ids.ALL_REPRESENTATIONS) -> None:
     usual_s = c.DA_REWARD_DELAY / c.DA_STEPS_PER_SECOND
     early_s = c.DA_EARLY_REWARD_DELAY / c.DA_STEPS_PER_SECOND
     for col, representation in enumerate(representations):
-        results = helper.load(STUDY, EXPERIMENT, representation, "default")
-        probes = np.flatnonzero(results[ids.PROBE])
+        stats = helper.load_stats(STUDY, EXPERIMENT, representation, "default")
+        probes = np.flatnonzero(stats[ids.PROBE])
         for trial, style, label in ((probes[0], "-", "First early-reward probe"), (probes[-1], "--", "Last probe")):
-            common.plot_error_and_value(axes[:, col], results, trial, color=helper.COLORS[representation], label=label, t_max=2.5)
+            common.plot_error_and_value(axes[:, col], stats, trial, color=helper.COLORS[representation], label=label, t_max=2.5)
             for ax in axes[:, col]:
                 ax.lines[-1].set_linestyle(style)
+        helper.annotate_seeds(axes[0, col], stats)
         for ax in axes[:, col]:
             common.mark_events(ax, usual_s)
             ax.axvline(early_s, color="k", ls="--", lw=0.8)

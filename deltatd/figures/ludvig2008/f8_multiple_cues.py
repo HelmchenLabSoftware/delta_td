@@ -5,7 +5,6 @@ from __future__ import annotations
 
 from deltatd.figures import helper
 from deltatd.figures.ludvig2008 import common
-from deltatd.simulation import simulate as sim
 from deltatd.simulation import tasks
 from deltatd.utils import constants as c
 from deltatd.utils import ids
@@ -17,7 +16,7 @@ CONDITIONS = {"default": tasks.multiple_cues_protocol}
 
 def simulate(representations: list[str] = ids.ALL_REPRESENTATIONS) -> None:
     helper.simulate_conditions(
-        STUDY, EXPERIMENT, CONDITIONS, common.representations_in(representations), model_factory=sim.build_dopamine_model
+        STUDY, EXPERIMENT, CONDITIONS, common.representations_in(representations), model_factory=common.MODEL_FACTORY
     )
 
 
@@ -33,12 +32,17 @@ def plot(representations: list[str] = ids.ALL_REPRESENTATIONS) -> None:
     reward_s = c.DA_MULTI_REWARD_DELAY / c.DA_STEPS_PER_SECOND
     for row, (k, kind) in enumerate(rows):
         for col, (representation, quantity) in enumerate(columns):
-            results = helper.load(STUDY, EXPERIMENT, representation, "default")
-            trial = helper.trial_index(results, f"{kind}_{k}")
-            time = common.seconds(results, trial)
+            stats = helper.load_stats(STUDY, EXPERIMENT, representation, "default")
+            trial = helper.trial_index(stats, f"{kind}_{k}")
+            time = common.seconds(stats, trial)
             mask = (time >= -0.5) & (time <= 4.0)
             key = ids.TD_ERROR if quantity == "TD error" else ids.VALUE
-            axes[row, col].plot(time[mask], results[key][trial][mask], color=helper.COLORS[representation])
+            mean, sd = stats.mean[key][trial][mask], stats.sd[key][trial][mask]
+            axes[row, col].plot(time[mask], mean, color=helper.COLORS[representation])
+            if stats.n > 1:
+                axes[row, col].fill_between(time[mask], mean - sd, mean + sd, color=helper.COLORS[representation], alpha=helper.BAND_ALPHA, lw=0)
+            if row == 0:
+                helper.annotate_seeds(axes[row, col], stats)
             common.mark_events(axes[row, col], reward_s, cue_times_s=(0.0, second_s))
             if kind == "omitted":
                 axes[row, col].axvline(second_s, color="r", ls=":", lw=0.8)

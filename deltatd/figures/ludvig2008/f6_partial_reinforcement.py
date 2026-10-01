@@ -5,19 +5,20 @@ from __future__ import annotations
 
 from deltatd.figures import helper
 from deltatd.figures.ludvig2008 import common
-from deltatd.simulation import simulate as sim
 from deltatd.simulation import tasks
 from deltatd.utils import constants as c
 from deltatd.utils import ids
 
 STUDY = common.STUDY
 EXPERIMENT = ids.PARTIAL_REINFORCEMENT
-CONDITIONS = {f"p{p:.2f}": (lambda p=p: tasks.partial_reinforcement_protocol(p)) for p in c.DA_REWARD_PROBABILITIES}
+CONDITIONS = {  # the reward schedule is random: the `seed` argument makes every model run once per seed
+    f"p{p:.2f}": (lambda p=p, seed=c.SEED: tasks.partial_reinforcement_protocol(p, seed=seed)) for p in c.DA_REWARD_PROBABILITIES
+}
 
 
 def simulate(representations: list[str] = ids.ALL_REPRESENTATIONS) -> None:
     helper.simulate_conditions(
-        STUDY, EXPERIMENT, CONDITIONS, common.representations_in(representations), model_factory=sim.build_dopamine_model
+        STUDY, EXPERIMENT, CONDITIONS, common.representations_in(representations), model_factory=common.MODEL_FACTORY
     )
 
 
@@ -32,11 +33,16 @@ def plot(representations: list[str] = ids.ALL_REPRESENTATIONS) -> None:
     reward_s = c.DA_REWARD_DELAY / c.DA_STEPS_PER_SECOND
     for row, p in enumerate(c.DA_REWARD_PROBABILITIES):
         for col, (representation, label) in enumerate(columns):
-            results = helper.load(STUDY, EXPERIMENT, representation, f"p{p:.2f}")
-            trial = helper.probe_index(results, label)
-            time = common.seconds(results, trial)
+            stats = helper.load_stats(STUDY, EXPERIMENT, representation, f"p{p:.2f}")
+            trial = helper.probe_index(stats, label)
+            time = common.seconds(stats, trial)
             mask = (time >= -0.5) & (time <= 2.5)
-            axes[row, col].plot(time[mask], results[ids.TD_ERROR][trial][mask], color=helper.COLORS[representation])
+            mean, sd = stats.mean[ids.TD_ERROR][trial][mask], stats.sd[ids.TD_ERROR][trial][mask]
+            axes[row, col].plot(time[mask], mean, color=helper.COLORS[representation])
+            if stats.n > 1:
+                axes[row, col].fill_between(time[mask], mean - sd, mean + sd, color=helper.COLORS[representation], alpha=helper.BAND_ALPHA, lw=0)
+            if row == 0:
+                helper.annotate_seeds(axes[row, col], stats)
             common.mark_events(axes[row, col], reward_s)
         axes[row, 0].set_ylabel(f"p = {p:.2f}\nTD error")
     for ax in axes[-1]:

@@ -9,6 +9,7 @@ from deltatd.utils import constants as c
 from deltatd.utils import ids
 
 STUDY = ids.LUDVIG2008
+MODEL_FACTORY = "dopamine"  # key of `simulate.MODEL_FACTORIES`: the 2008 parameters
 REPRESENTATIONS: list[str] = list(c.DA_REPRESENTATIONS)
 
 
@@ -17,17 +18,20 @@ def representations_in(requested: list[str]) -> list[str]:
     return [model for model in REPRESENTATIONS if ids.base_representation(model) in requested]
 
 
-def seconds(results: dict[str, np.ndarray], trial: int) -> np.ndarray:
+def seconds(results, trial: int) -> np.ndarray:
     """Time axis of a trial in seconds relative to the (first) cue onset."""
     return helper.relative_time(results, trial) / c.DA_STEPS_PER_SECOND
 
 
-def plot_error_and_value(axes_row, results: dict[str, np.ndarray], trial: int, color: str, label: str, t_max: float = 3.0):
-    """Plot the TD error (left axis) and value (right axis) of one trial against time in seconds."""
-    time = seconds(results, trial)
+def plot_error_and_value(axes_row, stats: helper.Stats, trial: int, color: str, label: str, t_max: float = 3.0):
+    """Plot the TD error (left axis) and value (right axis) of one trial against time in seconds (mean and SD band)."""
+    time = seconds(stats, trial)
     mask = (time >= -0.5) & (time <= t_max)
-    axes_row[0].plot(time[mask], results[ids.TD_ERROR][trial][mask], color=color, label=label)
-    axes_row[1].plot(time[mask], results[ids.VALUE][trial][mask], color=color, label=label)
+    for ax, key in zip(axes_row, (ids.TD_ERROR, ids.VALUE)):
+        mean, sd = stats.mean[key][trial][mask], stats.sd[key][trial][mask]
+        ax.plot(time[mask], mean, color=color, label=label)
+        if stats.n > 1:
+            ax.fill_between(time[mask], mean - sd, mean + sd, color=color, alpha=helper.BAND_ALPHA, lw=0)
 
 
 def mark_events(ax, reward_time_s: float | None, cue_times_s: tuple[float, ...] = (0.0,)) -> None:

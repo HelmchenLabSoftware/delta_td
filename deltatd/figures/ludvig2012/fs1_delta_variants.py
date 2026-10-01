@@ -17,27 +17,28 @@ from deltatd.utils import ids
 
 STUDY = ids.LUDVIG2012
 EXPERIMENT = ids.DELTA_VARIANTS
-TASKS = {
+CONDITIONS = {
     "acquisition": lambda: tasks.acquisition_protocol(c.DELTA_VARIANT_ISI),
     "timing": lambda: tasks.timing_protocol(c.DELTA_VARIANT_PROBE_ISI),
     "blocking_b_earlier": lambda: tasks.blocking_protocol(*c.BLOCKING_CONDITIONS["b_earlier"]),
 }
 
 
+def variant_kwargs(rule: str) -> dict:
+    """Learner overrides of a consumption rule (the trial-end rule needs gamma = 1)."""
+    return {"reset_rule": rule, "gamma": 1.0 if rule == ids.RESET_AT_TRIAL_END else c.DELTA_DISCOUNT}
+
+
 def variant_model(rule: str) -> sim.Model:
-    gamma = 1.0 if rule == ids.RESET_AT_TRIAL_END else c.DELTA_DISCOUNT
-    return sim.build_model(ids.DELTA, learner_kwargs={"reset_rule": rule, "gamma": gamma})
+    return sim.build_model(ids.DELTA, learner_kwargs=variant_kwargs(rule))
 
 
 def simulate(representations: list[str] = ids.ALL_REPRESENTATIONS) -> None:
     if ids.DELTA not in representations:
         return
     for rule in c.DELTA_VARIANT_RULES:
-        for task, make_protocol in TASKS.items():
-            print(f"  {EXPERIMENT}: {rule} / {task}", flush=True)
-            results = sim.run_protocol(variant_model(rule), make_protocol())
-            sim.save_results(helper.run_path(STUDY, EXPERIMENT, rule, task), results)
-    print(f"  {EXPERIMENT}: done")
+        for task in CONDITIONS:
+            helper.submit(helper.Job(STUDY, EXPERIMENT, __name__, task, ids.DELTA, rule, learner_kwargs=variant_kwargs(rule)))
 
 
 

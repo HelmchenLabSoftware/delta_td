@@ -29,11 +29,12 @@ def plot_f2(representations: list[str]) -> None:
     isi = c.ACQUISITION_EXAMPLE_ISI
     fig, axes = helper.representation_panels(representations)
     for ax, representation in zip(axes[0], representations):
-        results = helper.load(STUDY, EXPERIMENT, representation, f"isi{isi}")
+        stats = helper.load_stats(STUDY, EXPERIMENT, representation, f"isi{isi}")
         for k, trial in enumerate(c.ACQUISITION_EXAMPLE_TRIALS):
-            time = helper.relative_time(results, trial - 1)
+            time = helper.relative_time(stats, trial - 1)
             shade = 0.3 + 0.7 * k / max(len(c.ACQUISITION_EXAMPLE_TRIALS) - 1, 1)
-            ax.plot(time, results[ids.VALUE][trial - 1], color=helper.COLORS[representation], alpha=shade, label=f"Trial {trial}")
+            helper.plot_band(ax, time, stats, ids.VALUE, trial - 1, color=helper.COLORS[representation], alpha=shade, label=f"Trial {trial}")
+        helper.annotate_seeds(ax, stats)
         ax.axvline(isi, color="k", ls=":", lw=0.8)
         ax.set_xlim(-10, 2 * isi + 10)
         ax.set_xlabel("Time steps from CS onset")
@@ -50,12 +51,12 @@ def plot_f3(representations: list[str]) -> None:
         ax.remove()
     ax_a.set_title("CR level after %d trials" % c.N_TRIALS_ACQUISITION)
     for representation in representations:
-        asymptotes = []
-        for isi in c.ACQUISITION_ISIS:
-            results = helper.load(STUDY, EXPERIMENT, representation, f"isi{isi}")
-            asymptotes.append(results[ids.CR_LEVEL][-1])
-        ax_a.plot(
-            c.ACQUISITION_ISIS, asymptotes, "o-", color=helper.COLORS[representation], label=ids.REPRESENTATION_LABELS[representation]
+        asymptotes = [
+            helper.load_stats(STUDY, EXPERIMENT, representation, f"isi{isi}").summary(lambda r: r[ids.CR_LEVEL][-1])
+            for isi in c.ACQUISITION_ISIS
+        ]
+        helper.errorbars(
+            ax_a, c.ACQUISITION_ISIS, asymptotes, color=helper.COLORS[representation], label=ids.REPRESENTATION_LABELS[representation]
         )
     ax_a.set_xlabel("Interstimulus interval (ISI)")
     ax_a.set_ylabel("CR level")
@@ -64,8 +65,9 @@ def plot_f3(representations: list[str]) -> None:
     for ax, representation in zip(axes[1], representations):
         ax.set_title(ids.REPRESENTATION_LABELS[representation])
         for k, isi in enumerate(c.TIMING_ISIS):
-            results = helper.load(STUDY, EXPERIMENT, representation, f"isi{isi}")
-            ax.plot(np.arange(1, len(results[ids.CR_LEVEL]) + 1), results[ids.CR_LEVEL], color=f"C{k}", label=f"ISI {isi}")
+            stats = helper.load_stats(STUDY, EXPERIMENT, representation, f"isi{isi}")
+            helper.plot_band(ax, np.arange(1, len(stats[ids.CR_LEVEL]) + 1), stats, ids.CR_LEVEL, color=f"C{k}", label=f"ISI {isi}")
+        helper.annotate_seeds(ax, stats)
         ax.set_xlabel("Trials")
     axes[1, 0].set_ylabel("CR level")
     axes[1, 0].legend(frameon=False)

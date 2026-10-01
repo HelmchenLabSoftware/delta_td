@@ -26,14 +26,18 @@ def plot(representations: list[str] = ids.ALL_REPRESENTATIONS) -> None:
         ax.sharey(axes[1, 0])
     for col, representation in enumerate(representations):
         for k, isi in enumerate(c.TIMING_ISIS):
-            results = helper.load(STUDY, EXPERIMENT, representation, f"isi{isi}")
-            probes = np.flatnonzero(results[ids.PROBE])
+            stats = helper.load_stats(STUDY, EXPERIMENT, representation, f"isi{isi}")
+            probes = np.flatnonzero(stats[ids.PROBE])
             last = probes[-1]
-            time = helper.relative_time(results, last)
-            axes[0, col].plot(time, results[ids.RESPONSE][last], color=f"C{k}", label=f"ISI {isi}")
+            time = helper.relative_time(stats, last)
+            helper.plot_band(axes[0, col], time, stats, ids.RESPONSE, last, color=f"C{k}", label=f"ISI {isi}")
             axes[0, col].axvline(isi, color=f"C{k}", ls=":", lw=0.8)
-            axes[1, col].plot(probes + 1, results[ids.PEAK_TIME][probes], ".", ms=3, color=f"C{k}")
+            peak_mean, peak_sd = stats.mean[ids.PEAK_TIME][probes], stats.sd[ids.PEAK_TIME][probes]
+            axes[1, col].plot(probes + 1, peak_mean, ".", ms=3, color=f"C{k}")
+            if stats.n > 1:
+                axes[1, col].fill_between(probes + 1, peak_mean - peak_sd, peak_mean + peak_sd, color=f"C{k}", alpha=helper.BAND_ALPHA, lw=0)
             axes[1, col].axhline(isi, color=f"C{k}", ls=":", lw=0.8)
+        helper.annotate_seeds(axes[0, col], stats)
         axes[0, col].set_xlim(-10, 2 * max(c.TIMING_ISIS) + 10)
         axes[0, col].set_xlabel("Time steps from CS onset")
         axes[1, col].set_xlabel("Trials")

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from deltatd.figures import helper
+from deltatd.figures.ludvig2012 import f5_blocking
 from deltatd.simulation import tasks
 from deltatd.utils import constants as c
 from deltatd.utils import ids
@@ -27,23 +28,22 @@ def plot(representations: list[str] = ids.ALL_REPRESENTATIONS) -> None:
         ax.remove()
 
     ax_a.set_title("Synchronous compound (same)")
-    levels = {}
-    for representation in representations:
-        results = helper.load(STUDY, EXPERIMENT, representation, "same")
-        levels[representation] = {
-            label: float(results[ids.CR_LEVEL][helper.probe_index(results, label)]) for label in helper.PROBE_LABELS
-        }
+    levels = f5_blocking.probe_levels(EXPERIMENT, "same", representations)
     helper.grouped_bars(ax_a, levels, group_labels=ids.REPRESENTATION_LABELS, bar_labels=helper.PROBE_LABELS)
-    ax_a.legend(frameon=False)
+    ax_a.legend(frameon=False, title=f5_blocking.seed_note(representations), loc="upper left", bbox_to_anchor=(1.02, 1.0))
 
     ax_b.set_title("Response to CSB alone")
     condition_names = list(c.OVERSHADOWING_CONDITIONS)
     for representation in representations:
-        levels_b = []
-        for condition in condition_names:
-            results = helper.load(STUDY, EXPERIMENT, representation, condition)
-            levels_b.append(results[ids.CR_LEVEL][helper.probe_index(results, "B_alone")])
-        ax_b.plot(condition_names, levels_b, "o-", color=helper.COLORS[representation], label=ids.REPRESENTATION_LABELS[representation])
+        levels_b = [
+            helper.load_stats(STUDY, EXPERIMENT, representation, condition).summary(f5_blocking.probe_level("B_alone"))
+            for condition in condition_names
+        ]
+        helper.errorbars(
+            ax_b, range(len(condition_names)), levels_b, color=helper.COLORS[representation], label=ids.REPRESENTATION_LABELS[representation]
+        )
+    ax_b.set_xticks(range(len(condition_names)))
+    ax_b.set_xticklabels(condition_names)
     ax_b.set_xlabel("Duration of overshadowing CSA")
     ax_b.set_ylabel("CR level")
     ax_b.legend(frameon=False)
@@ -51,10 +51,11 @@ def plot(representations: list[str] = ids.ALL_REPRESENTATIONS) -> None:
     isi_a = c.OVERSHADOWING_CONDITIONS[c.OVERSHADOWING_EXAMPLE]
     for ax, representation in zip(axes[1], representations):
         ax.set_title(ids.REPRESENTATION_LABELS[representation])
-        results = helper.load(STUDY, EXPERIMENT, representation, c.OVERSHADOWING_EXAMPLE)
+        stats = helper.load_stats(STUDY, EXPERIMENT, representation, c.OVERSHADOWING_EXAMPLE)
         for k, label in enumerate(helper.PROBE_LABELS):
-            trial = helper.probe_index(results, label)
-            ax.plot(helper.relative_time(results, trial), results[ids.RESPONSE][trial], color=f"C{k}", label=helper.PROBE_LABELS[label])
+            trial = helper.probe_index(stats, label)
+            helper.plot_band(ax, helper.relative_time(stats, trial), stats, ids.RESPONSE, trial, color=f"C{k}", label=helper.PROBE_LABELS[label])
+        helper.annotate_seeds(ax, stats)
         ax.axvline(isi_a, color="k", ls=":", lw=0.8)
         ax.set_xlim(-10, isi_a + 30)
         ax.set_xlabel("Time steps from CSA onset")

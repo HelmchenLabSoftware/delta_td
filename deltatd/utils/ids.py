@@ -1,35 +1,111 @@
-from typing import Literal
+from typing import Literal, NamedTuple
 
 # Identifiers of the temporal stimulus representations that are compared
-RepresentationID = Literal["csc", "microstimulus", "presence", "delta"]
+RepresentationID = Literal["csc", "microstimulus", "presence", "delta", "rnn"]
 CSC: RepresentationID = "csc"  # Complete serial compound (one element per stimulus time step)
 MICROSTIMULUS: RepresentationID = "microstimulus"  # Coarse-coded decaying memory trace (Ludvig et al. 2008)
 PRESENCE: RepresentationID = "presence"  # Single element per stimulus, active while the stimulus is on
 DELTA: RepresentationID = "delta"  # Integrated value-change model (Schoenfeld et al. 2024, Supplementary Note 2)
+RNN: RepresentationID = "rnn"  # Learnable representation: recurrent network driven by onset pulses, plastic weights
 LUDVIG_REPRESENTATIONS: list[RepresentationID] = [CSC, MICROSTIMULUS, PRESENCE]
-ALL_REPRESENTATIONS: list[RepresentationID] = LUDVIG_REPRESENTATIONS + [DELTA]
+ALL_REPRESENTATIONS: list[RepresentationID] = LUDVIG_REPRESENTATIONS + [DELTA, RNN]
 
-# Named model variants: a base representation with learner overrides, usable wherever a representation id is plotted
-ModelVariantID = Literal["delta_offset"]
+# Initial recurrent weights of the RNN representation: random, or reproducing one of the fixed representations
+RNNInitID = Literal["random", "csc", "microstimulus", "presence"]
+RNN_RANDOM_INIT: RNNInitID = "random"
+RNN_INITS: tuple[RNNInitID, ...] = (RNN_RANDOM_INIT, CSC, MICROSTIMULUS, PRESENCE)
+# How the TD error is assigned to the recurrent synapses: local eligibility traces (e-prop like, default) or the exact
+# semi-gradient of the value propagated backwards through the network over a finite horizon
+RNNCreditID = Literal["local", "exact"]
+RNN_LOCAL_CREDIT: RNNCreditID = "local"
+RNN_EXACT_CREDIT: RNNCreditID = "exact"
+
+
+class ModelVariant(NamedTuple):
+    """A base representation with parameter overrides, usable wherever a representation id is plotted."""
+
+    representation: RepresentationID
+    learner_kwargs: dict[str, object] = {}
+    representation_kwargs: dict[str, object] = {}
+
+
+ModelVariantID = Literal[
+    "delta_offset",
+    "rnn_csc",
+    "rnn_microstimulus",
+    "rnn_presence",
+    "rnn_exact",
+    "rnn_csc_exact",
+    "rnn_microstimulus_exact",
+    "rnn_presence_exact",
+]
 DELTA_OFFSET: ModelVariantID = "delta_offset"  # Delta-TD whose prediction is only consumed by a CS offset (not by the US)
-MODEL_VARIANTS: dict[str, tuple[RepresentationID, dict[str, object]]] = {DELTA_OFFSET: (DELTA, {"reset_rule": "offset"})}
+RNN_CSC_INIT: ModelVariantID = "rnn_csc"  # RNN initialized as a delay line (complete serial compound)
+RNN_MICROSTIMULUS_INIT: ModelVariantID = "rnn_microstimulus"  # RNN initialized to reproduce the microstimuli
+RNN_PRESENCE_INIT: ModelVariantID = "rnn_presence"  # RNN initialized as a self-sustaining presence unit
+RNN_EXACT: ModelVariantID = "rnn_exact"  # ... the same four with the exact (backward-propagated) credit assignment
+RNN_CSC_INIT_EXACT: ModelVariantID = "rnn_csc_exact"
+RNN_MICROSTIMULUS_INIT_EXACT: ModelVariantID = "rnn_microstimulus_exact"
+RNN_PRESENCE_INIT_EXACT: ModelVariantID = "rnn_presence_exact"
+MODEL_VARIANTS: dict[str, ModelVariant] = {
+    DELTA_OFFSET: ModelVariant(DELTA, {"reset_rule": "offset"}),
+    RNN_CSC_INIT: ModelVariant(RNN, {}, {"init": CSC}),
+    RNN_MICROSTIMULUS_INIT: ModelVariant(RNN, {}, {"init": MICROSTIMULUS}),
+    RNN_PRESENCE_INIT: ModelVariant(RNN, {}, {"init": PRESENCE}),
+    RNN_EXACT: ModelVariant(RNN, {}, {"credit": RNN_EXACT_CREDIT}),
+    RNN_CSC_INIT_EXACT: ModelVariant(RNN, {}, {"init": CSC, "credit": RNN_EXACT_CREDIT}),
+    RNN_MICROSTIMULUS_INIT_EXACT: ModelVariant(RNN, {}, {"init": MICROSTIMULUS, "credit": RNN_EXACT_CREDIT}),
+    RNN_PRESENCE_INIT_EXACT: ModelVariant(RNN, {}, {"init": PRESENCE, "credit": RNN_EXACT_CREDIT}),
+}
+RNN_INIT_MODELS: dict[RNNInitID, str] = {  # RNN init -> model id with the local credit assignment (default)
+    RNN_RANDOM_INIT: RNN,
+    CSC: RNN_CSC_INIT,
+    MICROSTIMULUS: RNN_MICROSTIMULUS_INIT,
+    PRESENCE: RNN_PRESENCE_INIT,
+}
+RNN_INIT_MODELS_EXACT: dict[RNNInitID, str] = {  # RNN init -> model id with the exact credit assignment
+    RNN_RANDOM_INIT: RNN_EXACT,
+    CSC: RNN_CSC_INIT_EXACT,
+    MICROSTIMULUS: RNN_MICROSTIMULUS_INIT_EXACT,
+    PRESENCE: RNN_PRESENCE_INIT_EXACT,
+}
+RNN_MODELS_BY_CREDIT: dict[RNNCreditID, dict[RNNInitID, str]] = {
+    RNN_LOCAL_CREDIT: RNN_INIT_MODELS,
+    RNN_EXACT_CREDIT: RNN_INIT_MODELS_EXACT,
+}
+RNN_INIT_LABELS: dict[RNNInitID, str] = {
+    RNN_RANDOM_INIT: "random init",
+    CSC: "CSC init",
+    MICROSTIMULUS: "microstimulus init",
+    PRESENCE: "presence init",
+}
+RNN_CREDIT_LABELS: dict[RNNCreditID, str] = {RNN_LOCAL_CREDIT: "local credit", RNN_EXACT_CREDIT: "exact credit"}
 REPRESENTATION_LABELS: dict[str, str] = {
     CSC: "CSC",
     MICROSTIMULUS: "Microstimulus",
     PRESENCE: "Presence",
     DELTA: r"$\Delta$-TD",
     DELTA_OFFSET: r"$\Delta$-TD (only CS offset consumes)",
+    RNN: "RNN (random init)",
+    RNN_CSC_INIT: "RNN (CSC init)",
+    RNN_MICROSTIMULUS_INIT: "RNN (microstimulus init)",
+    RNN_PRESENCE_INIT: "RNN (presence init)",
+    RNN_EXACT: "RNN (random init, exact credit)",
+    RNN_CSC_INIT_EXACT: "RNN (CSC init, exact credit)",
+    RNN_MICROSTIMULUS_INIT_EXACT: "RNN (microstimulus init, exact credit)",
+    RNN_PRESENCE_INIT_EXACT: "RNN (presence init, exact credit)",
 }
 
 
 def base_representation(model: str) -> RepresentationID:
     """Representation underlying a representation id or a model variant id."""
-    return MODEL_VARIANTS[model][0] if model in MODEL_VARIANTS else model
+    return MODEL_VARIANTS[model].representation if model in MODEL_VARIANTS else model
 
 # Identifiers of the studies whose experiments are reproduced
-StudyID = Literal["ludvig2012", "ludvig2008"]
+StudyID = Literal["ludvig2012", "ludvig2008", "rnn"]
 LUDVIG2012: StudyID = "ludvig2012"  # Ludvig, Sutton & Kehoe (2012) Learning & Behavior 40:305-319
 LUDVIG2008: StudyID = "ludvig2008"  # Ludvig, Sutton & Kehoe (2008) Neural Computation 20:3034-3054
+RNN_STUDY: StudyID = "rnn"  # Analyses of the learnable RNN representation (initializations, recurrent step size)
 
 # Identifiers of the experiments of Ludvig et al. (2012) and (2008)
 ExperimentID = Literal[
@@ -44,6 +120,8 @@ ExperimentID = Literal[
     "partial_reinforcement",
     "early_reward",
     "multiple_cues",
+    "rnn_initialization",
+    "rnn_step_size",
 ]
 ACQUISITION: ExperimentID = "acquisition"  # 2012 Fig. 2 and 3
 TIMING: ExperimentID = "timing"  # 2012 Fig. 4
@@ -56,6 +134,8 @@ REWARD_OMISSION: ExperimentID = "reward_omission"  # 2008 Fig. 4
 PARTIAL_REINFORCEMENT: ExperimentID = "partial_reinforcement"  # 2008 Fig. 6
 EARLY_REWARD: ExperimentID = "early_reward"  # 2008 Fig. 7
 MULTIPLE_CUES: ExperimentID = "multiple_cues"  # 2008 Fig. 8
+RNN_INITIALIZATION: ExperimentID = "rnn_initialization"  # Evolution of the RNN representation from each initialization
+RNN_STEP_SIZE: ExperimentID = "rnn_step_size"  # Scan of the recurrent step size relative to the readout step size
 
 # Stimulus identifiers. The unconditioned stimulus is itself a stimulus that can spawn representation elements.
 StimulusID = Literal["A", "B", "US"]
@@ -81,7 +161,21 @@ DELTA_VARIANT_LABELS: dict[str, str] = {
 }
 
 # Keys of the arrays recorded during a simulated protocol
-RecordKey = Literal["value", "response", "td_error", "cr_level", "peak_time", "probe", "label", "us_time", "cs_onset"]
+RecordKey = Literal[
+    "value",
+    "response",
+    "td_error",
+    "cr_level",
+    "peak_time",
+    "probe",
+    "label",
+    "us_time",
+    "cs_onset",
+    "dimensionality",
+    "weight_change",
+    "features",
+    "feature_trials",
+]
 VALUE: RecordKey = "value"  # US prediction V_hat at every time step (n_trials, trial_duration)
 RESPONSE: RecordKey = "response"  # Conditioned response level at every time step (n_trials, trial_duration)
 TD_ERROR: RecordKey = "td_error"  # Prediction error at every time step (n_trials, trial_duration)
@@ -91,3 +185,7 @@ PROBE: RecordKey = "probe"  # Whether the trial was an unreinforced probe trial 
 LABEL: RecordKey = "label"  # Free-form trial label set by the protocol (n_trials,)
 US_TIME: RecordKey = "us_time"  # Time step of the US (-1 if absent) (n_trials,)
 CS_ONSET: RecordKey = "cs_onset"  # Earliest CS onset in the trial (n_trials,)
+DIMENSIONALITY: RecordKey = "dimensionality"  # Participation ratio of the feature trajectory during the CS (n_trials,)
+WEIGHT_CHANGE: RecordKey = "weight_change"  # Frobenius norm of the change of the representation's weights (n_trials,)
+FEATURES: RecordKey = "features"  # Feature vectors of the recorded trials (n_recorded, trial_duration, n_features)
+FEATURE_TRIALS: RecordKey = "feature_trials"  # Indices of the trials whose features were recorded (n_recorded,)

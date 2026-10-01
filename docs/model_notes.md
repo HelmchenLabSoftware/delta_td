@@ -29,6 +29,18 @@ the US and by CS termination at the US:
 
 Ludvig et al. (2008) additionally have explicit reward omission and partial reinforcement experiments.
 
+## Reproducibility
+
+All models are deterministic. The two random elements, the Bernoulli reward schedule of the partial reinforcement
+experiment (`DA_PARTIAL_SEED`) and the random initial weights of the recurrent network plus the noise on its
+structured initializations (`RNN_SEED`), each draw from a local `numpy.random.default_rng` seeded from
+`constants.SEED` (0), so two simulations give bit-for-bit identical results (`tests/test_reproducibility.py`).
+Every stochastic run (any recurrent network, including the structured initializations whose noise is random, and
+every model in the partial reinforcement experiment whose schedule is random) is repeated over `constants.SEEDS`
+(`N_SEEDS` = 5 seeds, 0 to 4). The figures show the mean over seeds with a band or error bar of one standard
+deviation; a run that diverged contributes until the trial on which it diverged and the legend reports the number
+of diverged seeds. Network states (unit activities) are shown for seed 0 only.
+
 ## Ludvig et al. (2012): three temporal stimulus representations + TD($\lambda$)
 
 $$V_t = \mathbf{w}_t^\top \mathbf{x}_t,\qquad
@@ -240,3 +252,304 @@ cue result (no response to the reward after an omitted second cue) is a distinct
 Rows are the rules `offset`, `event` (default), `us` and `trial_end` ($\gamma = 1$ for the last one), columns the US
 prediction during acquisition, the response on a timing-set probe trial and the probe CR levels of blocking with an
 earlier CSB.
+
+## Learnable representation: recurrent network with a TD($\lambda$) readout (`rnn`)
+
+The fourth kind of model does not fix the temporal representation but learns it. A rectified-linear recurrent
+network of $N = 100$ units per stimulus (`RNN_UNITS_PER_STIMULUS`, the longest ISI of the experiments) is driven by
+the onset pulses $\mathbf{o}_t$ of all stimuli (the US included, as for the Ludvig representations):
+
+$$\mathbf{h}_t = \big[\mathbf{W}\,\mathbf{h}_{t-1} + \mathbf{U}\,\mathbf{o}_t\big]_+ ,\qquad V_t = \mathbf{w}^\top \mathbf{h}_t .$$
+
+The readout $\mathbf{w}$ learns with the unchanged TD($\lambda$) rule of Ludvig et al., the onset weights
+$\mathbf{U}$ are fixed, and the recurrent weights $\mathbf{W}$ are plastic. Nothing else changes: same response
+rule, same protocols, same parameters. With a linear readout, every initialization spans the same function class
+(any US prediction profile within the network's memory horizon), so the initializations are inductive biases for the
+same TD learner, not different models. The question the `rnn` study asks is what TD learning makes of each of them.
+
+### Plasticity of the recurrent weights
+
+Three-factor rule driven by the TD error of the readout, in the form of TD($\lambda$) applied to the recurrent
+synapses (`RecurrentNetwork.learn`):
+
+$$\mathbf{E}_t = \gamma\lambda\,\mathbf{E}_{t-1} + \frac{\partial V_{t-1}}{\partial \mathbf{W}},\qquad
+\mathbf{W} \mathrel{+}= \alpha_W\, \delta_t\, \mathbf{E}_t ,\qquad \alpha_W = \text{ratio} \times \alpha .$$
+
+The synaptic sensitivity $\partial V_{t-1} / \partial W_{ij}$ is computed in one of two ways (`RNN_CREDIT`):
+
+* `"local"` (default): $w_i\, \varepsilon_{ij,t-1}$ with $\varepsilon_{ij,t} = \phi'_{i,t}\, h_{j,t-1}$, the
+  direct sensitivity of the postsynaptic unit to the synapse (presynaptic activity gated by the postsynaptic
+  derivative); the learning signal of unit $i$ is its readout weight and credit only travels through time via the
+  TD($\lambda$) trace $\mathbf{E}$. Cost $n^2$ per step (0.2 ms for $n = 300$). The e-prop self-connection term
+  $W_{ii}\,\varepsilon_{ij,t-1}$ was tried first and dropped: it grows as $W_{ii}^t$, which explodes for the
+  autoregressive microstimulus block (diagonal entries up to 1.8, divergence on the first trial at any step size)
+  and inflates the eligibility of a self-sustaining presence unit linearly with time (divergence at ratios
+  $\geq 10^{-2}$).
+* `"exact"`: the semi-gradient propagated backwards through the network over the last `RNN_CREDIT_HORIZON` = 150
+  steps, $\sum_s \mathbf{c}_s \mathbf{h}_s^\top$ with $\mathbf{c}_{t-2} = \phi'_{t-1} \odot \mathbf{w}$ and
+  $\mathbf{c}_{s-1} = \phi'_s \odot (\mathbf{W}^\top \mathbf{c}_s)$. Verified against finite differences
+  (`tests/test_rnn.py`); it coincides with the local rule when $\mathbf{W}$ is diagonal. Cost $2 K n^2$ per step
+  (1.5 ms). It is the reference for what the local approximation misses; the `rnn` study runs every initialization
+  with both rules (model variants `*_exact`), the 2012 and 2008 comparisons use the local rule only.
+
+The ratio $\alpha_W / \alpha$ defaults to $2 \times 10^{-2}$ for the local rule (`RNN_STEP_RATIO`) and to
+$5 \times 10^{-4}$ for the exact rule (`RNN_EXACT_STEP_RATIO`), both chosen from the scan of `RNN_STEP_RATIOS`
+(0 and 12 values from $10^{-6}$ to $10^{-1}$) in the `rnn_step_size` figures, see the findings below. There is no
+explicit stability control of $\mathbf{W}$; rectification bounds the activity from below only, and a run whose value
+exceeds `DIVERGENCE_LIMIT` (or whose weights become NaN) is stopped and stored with NaN from that trial on.
+
+### Initializations (`initial_weights`)
+
+The structured initializations are block diagonal (one block per stimulus, remaining units silent) plus Gaussian
+noise of std `RNN_INIT_NOISE` = $10^{-3}$ on every recurrent weight, without which the unused units and the
+cross-stimulus weights would sit at a saddle point (no activity, no readout weight, hence no eligibility) forever.
+They reproduce the fixed representations with the plasticity switched off (tested in `tests/test_rnn.py`):
+
+| init | block | reproduction |
+|---|---|---|
+| `csc` | tapped delay line: the onset pulse enters unit 0 and is handed to the next unit every step | exact, equal to the ungated delay-line CSC of length 100 (the presence-gated CSC of 2012 differs only after the US, where the CS has ended anyway) |
+| `presence` | unit 0 with a self-connection of 1, switched on by the onset with the presence salience 0.2 and switched off by a US onset weight of $-1$ (rectified to 0) | exact on reinforced trials; on unreinforced trials the unit stays on until the next US, because the CS offset is not an input of the network (a design decision, see below) |
+| `microstimulus` | the 6 microstimuli are not a linear system of their own dimension (Gaussians of a decaying trace), but a 4th-order vector autoregression fitted by ridge regression over a trial reproduces them; the 18 delayed copies occupy further units at amplitude `RNN_MS_HIDDEN_SCALE` = 0.1 | with the ridge $10^{-2}$ adopted for stability under exact credit (see the diagnosis below): features within 0.06 (maximum 0.4) over the trial, frozen model value within 8% of the MS model; with ridge $10^{-6}$ the reproduction is exact to $1.4 \times 10^{-3}$ but the exact credit assignment diverges |
+| `random` | Gaussian $\mathbf{W}$ over all 300 units scaled to spectral radius `RNN_RANDOM_SPECTRAL_RADIUS` = 1.4, unit-norm Gaussian onset vectors | rectification halves the effective gain (chaos threshold at $\sqrt 2$): at 1.2 the activity is gone after 20 steps, at 1.5 it explodes; at 1.4 the activity norm decays from 0.75 to 0.28 at 25 steps and 0.08 at 100 steps |
+
+### Decisions (2026-09-30)
+
+* Inputs are onset pulses only; the network has no presence input and no offset pulse. Presence-like features have
+  to be produced by self-sustaining recurrence and switched off by the US. Consequence: on unreinforced trials the
+  presence init stays on until the next US. Offset pulses could be added later if this is judged unfair.
+* $N$ per stimulus is the longest ISI (100). The random init uses one pool of 300 units; the structured inits use
+  one block per stimulus, but all recurrent weights are plastic, so cross-stimulus connections can be learned.
+* Rectified linear units (the three structured inits are non-negative trajectories, so rectification leaves them
+  unchanged and gives the presence init its switch-off).
+* The plain `rnn` model (random init) is added to the 2012 and 2008 comparisons; the four initializations are
+  compared in the `rnn` study only.
+
+### Analyses (`figures/rnn`)
+
+`f1_rnn_initialization_representation_{local,exact}`: US prediction over acquisition (ISI 25) per init, with the
+fixed reference model's final prediction dashed, and the network state on the first and the last trial (active units
+normalized and sorted by peak time), one figure per credit rule. `f2_rnn_initialization_metrics`: CR level,
+dimensionality of the state trajectory during the CS (participation ratio of the Gram matrix; 25 for the CSC at
+ISI 25, 1 for presence, in between for MS) and $\|\mathbf{W} - \mathbf{W}_0\|_F$ over trials, plus the timing set:
+peak time and response width (steps above half the maximal response) on the last probe trial against the ISI, local
+credit solid, exact credit dotted, fixed references dashed. The dimensionality and the response width against the
+ISI are the two readouts of temporal generalization: a delay line keeps the dimensionality at the ISI and the width
+constant, a scalar (Weber-law) representation widens the response with the ISI and keeps the dimensionality low.
+`f3_rnn_step_size_{local,exact}`: the recurrent step-size scan per credit rule (CR level and dimensionality over
+trials, last-trial prediction; diverged runs are cut at the divergence trial and marked). `f4_rnn_step_size_summary`:
+final CR level, trials to 90% of it and its relative SD over the last 20 trials against the ratio, with the defaults.
+
+### Findings (2026-09-30, revised 2026-10-01 with five seeds)
+
+All numbers are means (± SD where it is not negligible) over the five seeds of `constants.SEEDS`, which change the
+random weight matrix of the random init and the $10^{-4}$ noise of the structured inits. The single-seed numbers of
+the first pass are superseded. The microstimulus init uses the ridge $10^{-2}$ decided in the diagnosis below.
+
+Recurrent step-size scan (acquisition, ISI 25, 200 trials; entries: CR level over the last 20 trials, "div." = all
+seeds diverged, "k/5 div." = k seeds diverged (the mean is over the others), "osc." = relative SD of the CR level
+over the last 20 trials when above 1%):
+
+| ratio $\alpha_W/\alpha$ | random, local | CSC, local | MS, local | presence, local | random, exact | CSC, exact | MS, exact | presence, exact |
+|---|---|---|---|---|---|---|---|---|
+| 0 (frozen) | 1.15 ± 0.56 | 5.29 | 4.54 | 3.96 | same | same | same | same |
+| $10^{-6}$ | 1.15 ± 0.56 | 5.29 | 4.54 | 3.96 | 1.17 ± 0.56 | 5.29 | 4.56 | 3.98 |
+| $10^{-5}$ | 1.15 ± 0.56 | 5.29 | 4.54 | 3.97 | 1.22 ± 0.54 | 5.29 | 4.71 | 4.09 |
+| $10^{-4}$ | 1.15 ± 0.56 | 5.29 | 4.55 | 4.00 | 1.81 ± 0.64, osc. 2% | 5.29 | 4.79, osc. 15% | 4.88 ± 0.07 |
+| $3 \times 10^{-4}$ | 1.14 ± 0.55 | 5.29 | 4.57 | 4.07 | 2.95 ± 1.10, osc. 2% | 5.29 | 5.01 ± 0.08 | 5.51 ± 0.42, 2/5 div. |
+| $5 \times 10^{-4}$ (**exact default**) | 1.14 ± 0.54 | 5.29 | 4.58 | 4.14 | 3.76 ± 0.96, osc. 3% | 5.29 | 5.05, osc. 3% | 5.29 ± 0.18 |
+| $10^{-3}$ | 1.13 ± 0.53 | 5.29 | 4.62 | 4.29 | 4.69 ± 0.41 | 5.29 | 5.05, 1/5 div. | 4.40 ± 1.93, osc. 97% |
+| $3 \times 10^{-3}$ | 1.10 ± 0.50 | 5.29 | 4.73 | 4.71 | 5.01 ± 0.10, osc. 2% | 5.29 | 4.79, 3/5 div., osc. 18% | 5.31, 4/5 div. |
+| $10^{-2}$ | 1.06 ± 0.41 | 5.29 | 4.92 | 5.33 ± 0.07 | 5.10 ± 0.09, osc. 9% | 5.29 | div. | div. |
+| $2 \times 10^{-2}$ (**local default**) | 1.02 ± 0.30 | 5.29 | 4.99 | 5.58 ± 0.09 | 5.16, 1/5 div., osc. 10% | 5.29 | div. | div. |
+| $3 \times 10^{-2}$ | 1.04 ± 0.23 | 5.29 | 5.01 | 5.65 ± 0.09 | 5.23, 1/5 div., osc. 10% | 5.29 | div. | div. |
+| $5 \times 10^{-2}$ | 1.16 ± 0.27, osc. 3% | 5.29 | 5.02 | 5.57, 3/5 div. | 5.13, 3/5 div., osc. 18% | 5.29 | div. | div. |
+| $10^{-1}$ | 1.33 ± 0.38, osc. 5% | 5.29 (dimensionality 12) | 5.04 | div. | div. | div. | div. | div. |
+
+Criterion for the defaults, revised with seeds: the fastest ratio at which no seed of any initialization diverges.
+Local: $2 \times 10^{-2}$ is confirmed (no divergence up to $3 \times 10^{-2}$; at $5 \times 10^{-2}$ three
+presence seeds diverge, at $10^{-1}$ all). Exact: $5 \times 10^{-4}$ is the *only* ratio without a diverged seed
+(two presence seeds already diverge at $3 \times 10^{-4}$, one MS seed at $10^{-3}$); the first-pass requirement of
+a settled CR level (relative SD below 1%) cannot be met by all inits at any exact ratio (random 3%, MS 3%, presence
+SD 0.18 across seeds at the default). The exact rule is therefore marginal on every init but the CSC, and the
+stability boundary is not monotonic in the ratio (presence exact: 2/5 diverge at $3 \times 10^{-4}$, 0/5 at
+$5 \times 10^{-4}$, oscillation at $10^{-3}$).
+
+Initialization study at the default ratios (acquisition at ISI 25, 200 trials; timing set of 500 trials with
+unreinforced probes every fifth trial; peak time / width of the response on the last probe trial, in steps from CS
+onset; "--" = no response on the probe):
+
+| model | CR (ISI 25) | ISI 10 | ISI 25 | ISI 50 | ISI 100 |
+|---|---|---|---|---|---|
+| CSC (fixed) | 5.29 | 9 / 12 | 24 / 18 | 49 / 18 | 99 / 18 |
+| RNN, CSC init, local | 5.29 | 9 / 12 | 24 / 17 | 49 / 18 | 99 / 19 |
+| RNN, CSC init, exact | 5.29 | 9 / 12 | 24 / 17 | 49 / 19 | 99 / 19 |
+| microstimulus (fixed) | 4.67 | 11 / 18 | 26 / 28 | 48 / 25 | 101 / 55 |
+| RNN, MS init, local | 5.02 | 10 / 16 | 24 / 25 | 49 / 32 | 98 / 47 |
+| RNN, MS init, exact | 5.06 | 10 / 14 | 23 / 20 | 46 / 22 | -- (3/5 diverged) |
+| presence (fixed) | 3.96 | 19 / 21 | 40 / 50 | 36 / 100 | -- |
+| RNN, presence init, local | 5.58 ± 0.09 | 24 / 67 | 39 / 107 | 24 / 64 | -- |
+| RNN, presence init, exact | 5.32 ± 0.21 | 9 / 20 | 15 / 36 | 20 / 52 | 120 ± 17 / 75 ± 7 |
+| RNN, random init, local | 1.03 ± 0.29 | 9 / 12 | 17 ± 4 / 20 ± 2 | 44 / 15 (one seed) | -- |
+| RNN, random init, exact | 3.90 ± 0.92 | 9 / 12 | 23 ± 1 / 20 ± 1 | 43 ± 5 / 26 ± 5 | -- |
+
+* **Exact credit turns the random init into a competent but seed-dependent learner, the local rule does not.**
+  With the local rule the random pool stays a slow learner at every ratio (CR 1.0 to 1.3, the spread of ± 0.5
+  between seeds being larger than any effect of the ratio; the value outlasts the US because the US-driven activity
+  of the pool is not cancelled). With exact credit at the default it reaches CR 3.9 ± 0.9 after 200 trials (4.7 at
+  ratio $10^{-3}$, 5.1 at $3 \times 10^{-3}$), the value peaks before the US and is cancelled after it, and the
+  response peaks at the US; how fast depends on the seed (trials to 90% of the final CR: 163 ± 17 at the default).
+  The difference is credit assignment through the recurrent dynamics: the local rule only strengthens synapses whose
+  postsynaptic unit already has a readout weight, so it cannot build the multi-step memory a random reservoir lacks.
+* **The structured inits keep their temporal signature, independently of the seed.** The CSC init stays a delay
+  line under both rules (peak at the US, width 18 steps at every ISI, SD over seeds zero to two decimals), although
+  its dimensionality drops from 25 to 22 (local) as plasticity smears the line. The MS init keeps the Weber-like
+  widening of the microstimuli (width 16 to 47 steps from ISI 10 to 100 with the local rule) while learning faster
+  than the fixed microstimuli (5.02 against 4.67) and losing dimensionality (2.0 to 1.8). Plasticity sharpens the
+  prediction on the trained ISI without changing the family of the representation.
+* **The presence init is the one that plasticity changes qualitatively, and the two rules change it differently.**
+  In plain acquisition both rules grow the self-connection past 1 and turn the plateau into the exponential ramp of
+  TD (value at the US after 200 trials 1.06 ± 0.02 with the local rule, 0.98 ± 0.06 with exact credit; the local
+  rule overshoots the CSC's 1.0 because a single exponential cannot also fit the onset step); the block keeps a
+  single active unit under both rules. In the timing set, where every fifth trial is
+  an unreinforced probe on which the unit is never switched off (no US, and the CS offset is not an input), the two
+  rules end up differently. With the local rule the unit stays on and decays slowly (probe value at ISI 25: 0.35 at
+  onset, 0.11 at the end of the trial), so the response is a plateau of 64 to 107 steps peaking between 24 and 39
+  steps whatever the ISI, and at ISI 100 the plateau (0.21) never reaches the response threshold; the seeds agree
+  to the step. With exact credit the activity on probes decays within the ISI at ISI 10 to 50 (0.2 to 0.03 within
+  50 steps at ISI 50), so the response is early (peak 9, 15, 20 steps) and narrower (20 to 52 steps), whereas at
+  ISI 100 the unit ramps up and the response peaks late (120 ± 17 steps, width 75 ± 7). Under exact credit the
+  presence init is also the least stable: in acquisition three of the five seeds collapse from CR 5.8 to zero
+  between trials 95 and 107 and recover to 5.2 to 5.3 by trial 150 (the SD band in the metrics figure; the two
+  other seeds are smooth), and the scan shows divergence on both sides of the default ratio. Neither rule yields the fixed presence model's behaviour (peak at the CS offset, then decay).
+* **The random init generalizes only within the memory horizon of the reservoir.** With the local rule it responds
+  at ISI 10 (peak 9, width 12, CR 3.0 ± 0.1 on the last probe) and weakly at ISI 25 (CR 1.2 ± 0.5), and at ISI 50
+  only one of five seeds responds at all (the pool's activity has decayed to 0.28 at 25 steps, 0.08 at 100). Exact
+  credit extends the horizon to ISI 50 (peak 43 ± 5, width 26 ± 5, CR 4.2) but not to 100. In the 2012 and 2008
+  figures (local rule) the random init therefore learns only the short ISIs (CR after 200 trials: 2.6 ± 0.1 at
+  ISI 5, 3.1 ± 0.4 at ISI 10, 1.0 ± 0.3 at ISI 25, 0.1 ± 0.2 at ISI 50, 0 at ISI 100), barely responds in the
+  blocking (blocking CS at ISI 50) and overshadowing (ISI 25) protocols (CR at most 1.3 ± 0.6, so these experiments
+  are uninformative for it), and shows the TD-error features of Ludvig 2008 (reward omission dip, partial
+  reinforcement, early reward) only qualitatively, with a noisy value that outlasts the US because the US-driven
+  activity of the pool is not cancelled. One of the five seeds diverges on the omission trial of the 2008
+  reward-omission experiment (see "Notes for later work").
+* **Speed of the CR against the fixed references** at the defaults: every structured init learns at least as fast as
+  the representation it reproduces (CR after 200 trials: CSC 5.29 = 5.29, MS 5.02 > 4.67, presence 5.58 > 3.96),
+  because plasticity adds the exponential ramp the readout alone cannot express on presence-like features.
+* **Variance across seeds** is negligible for the structured inits with the local rule (SD at most 0.09 in the CR
+  level) and large for the random init (SD 0.3 to 0.9) and for every init at the stability boundary of the exact
+  rule; conclusions about the random init rest on the means over five weight matrices, not on one.
+
+## Diagnosis: the microstimulus init diverges under exact credit (2026-10-01)
+
+**Symptom.** With the exact (backward-propagated) credit assignment the microstimulus init diverges on trial 2 at the
+default ratio $5 \times 10^{-4}$ and at every ratio above $10^{-6}$; the other three inits are stable there, and the
+same init is stable under the local rule at ratios up to $10^{-1}$.
+
+**Cause: the block is a nearly singular autoregression, and the exact gradient travels through its raw
+coefficients.** The microstimulus block is a companion-form realisation of a 4th-order vector autoregression fitted
+to the six microstimuli (24 units: the microstimuli and three delayed copies). The microstimuli are smooth, so their
+lagged values are almost collinear and the least-squares fit (ridge $10^{-6}$) picks large coefficients of
+alternating sign that cancel in the forward pass. The forward dynamics are fine (spectral radius 0.97, exact
+reproduction to $1.4 \times 10^{-3}$), but the matrix is strongly non-normal: $\|\mathbf{W}\|_2 = 18.5$ with
+entries up to 9.4 (the hidden-copy scaling of 0.1 multiplies the copy coefficients by ten), against a spectral
+radius below 1. Backward propagation uses $\mathbf{W}^\top$ step by step and sees the raw coefficients, not their
+cancelling sum: $\|(\mathbf{W}^\top)^k\|_2$ reaches 71 at $k = 5$ and is still 10 at $k = 100$. Measured on trial 1,
+20 steps after CS onset, the exact sensitivity $\|\partial V / \partial \mathbf{W}\|_F$ is 26 against 0.06 for the
+local rule (a factor 400), concentrated in the rows of the hidden-copy units. The weight update of the first trial
+is therefore already large enough to destabilise the block. The local rule never sees $\mathbf{W}^\top$; its
+eligibility is bounded by the activities, which are smooth and small.
+
+What does *not* help: the credit horizon (10 or 30 instead of 150: the amplification happens within the first
+five backward steps), the hidden-unit scale (1.0 instead of 0.1 lowers $\|\mathbf{W}\|_2$ to 2.9 but the transient
+growth stays at 15 and the run diverges on trial 3), a lower embedding order (2: diverges on trial 2).
+
+**Solutions.** Two work, one of them is principled:
+
+| ridge | $\|\mathbf{W}\|_2$ | max $\|W_{ij}\|$ | $\max_k \|(\mathbf{W}^\top)^k\|_2$ | reproduction error (max 0.4) | frozen value vs MS model | exact credit, ratio $5 \times 10^{-4}$ | local, CR trial 200 |
+|---|---|---|---|---|---|---|---|
+| $10^{-6}$ (old) | 18.5 | 9.4 | 71 | 0.0014 | 0.035 | diverges trial 2 | 5.15 |
+| $10^{-4}$ | 6.7 | 4.5 | 11 | 0.008 | 0.014 | diverges trial 120 | 5.08 |
+| $10^{-3}$ | 6.5 | 4.3 | 8.8 | 0.022 | 0.029 | stable, CR 5.06 | 5.07 |
+| $3 \times 10^{-3}$ | 6.2 | 4.1 | 7.5 | 0.035 | 0.040 | stable, CR 5.10 | 5.07 |
+| $10^{-2}$ | 5.4 | 3.6 | 5.4 | 0.060 | 0.079 | stable, CR 5.04 | 5.02 |
+| $3 \times 10^{-2}$ | 4.3 | 3.1 | 4.4 | 0.092 | 0.136 | stable, CR 4.98 | 4.93 |
+| $10^{-1}$ | 4.2 | 2.6 | 4.3 | 0.146 | 0.245 | stable, CR 4.81 | 4.77 |
+
+1. **Regularise the fit** (`RNN_MS_RIDGE`). The ridge penalty shrinks the cancelling coefficients and is exactly
+   the remedy for collinear regressors; it trades reproduction accuracy for conditioning (table). From $10^{-3}$
+   the exact rule is stable at its default ratio and learns like the local rule (CR 5.06 against 5.07), while the
+   block still reproduces the microstimuli to 2% of their maximum and the frozen network's value stays within 3% of
+   the microstimulus model. The local rule is unaffected (CR 5.15 to 5.07). This is the fix adopted, see below.
+2. **Bound the per-step sensitivity** (clip $\|\partial V / \partial \mathbf{W}\|_F$ to 1 or 0.1): stable, CR 3.8
+   after 40 trials against 4.1 for the local rule. It is the standard remedy for exploding gradients in RNN
+   training but it changes the plasticity rule for all models, and it is not biologically motivated.
+3. **A balanced realisation** of the microstimulus impulse response (Ho-Kalman / balanced truncation) would give a
+   near-normal $\mathbf{W}$ by construction, but its states are sign-indefinite and would need rectified pairs of
+   units; the readout would then see linear mixtures of the microstimuli rather than the microstimuli themselves,
+   so the frozen network would no longer learn like the microstimulus model. Not pursued.
+
+**Robustness of the ridge fix** (exact credit, acquisition at ISI 25, 200 trials; "osc." = relative SD of the CR
+level over the last 20 trials above 4%):
+
+| ridge | ratio $5 \times 10^{-4}$ (default), seeds 0 to 4 | ratio $10^{-3}$, seed 0 | ratio $3 \times 10^{-3}$, seed 0 |
+|---|---|---|---|
+| $10^{-3}$ | seed 0 stable; seeds 1 and 2 diverge on trial 53 | stable | diverges trial 6 |
+| $3 \times 10^{-3}$ | not tested | not tested | diverges trial 7 |
+| $10^{-2}$ | all five stable (CR 5.04 to 5.07; seeds 1 and 2 osc., 4% and 7%) | stable | diverges trial 27 |
+| $3 \times 10^{-2}$ | seed 1 diverges on trial 180, the others stable | not tested | not tested |
+
+**Decision (2026-10-01, flagged):** `RNN_MS_RIDGE` is raised from $10^{-6}$ to $10^{-2}$ for both credit rules (one
+block for both, so the comparison keeps a common initialization). It is the only value at which all five seeds are
+stable at the default exact ratio; the margin is still thin (a six-fold larger ratio diverges, two seeds oscillate),
+so the exact rule on this init remains marginal and is reported as such (in the five-seed scan above: one seed
+diverges at ratio $10^{-3}$, three at $3 \times 10^{-3}$, and three of five seeds diverge in the timing set at
+ISI 100, where probe trials leave the activity unperturbed for long stretches). Cost: the block now reproduces the
+microstimuli to 0.06 (15% of their maximum) instead of 0.0014, and the frozen network's value deviates from the
+microstimulus model by up to 8% instead of 3.5%; the local-rule result changes from CR 5.15 to 5.02. The
+conservative alternative, keeping $10^{-6}$ and dropping the exact-credit microstimulus variant from the figures,
+is a one-line revert.
+
+## Notes for later work (2026-10-01)
+
+Open items collected while finishing the RNN study, roughly by importance.
+
+* **Offset pulses as an input of the recurrent network.** Without them the presence init cannot switch off on
+  unreinforced probe trials, which drives its whole timing behaviour in the `rnn` study (plateau responses of up to
+  107 steps with the local rule). Adding a CS offset pulse to $\mathbf{o}_t$ is a two-line change in
+  `RecurrentNetwork.step` / `tasks`, but it is a modelling decision (the fixed presence representation has the
+  offset for free, delta-TD deliberately does not).
+* **Memory horizon of the random init.** With spectral radius 1.4 the activity of the random pool decays to 8% at
+  100 steps, so the random init cannot learn ISI 50 (local) or 100 (exact). Options: scan the spectral radius (1.5
+  explodes under rectification, so the usable window is narrow), add slow units (leaky integration $h_t = (1 - 1/\tau)
+  h_{t-1} + \ldots$), or more units. Until then the blocking and overshadowing figures carry no information about the
+  random init.
+* **Stability of the recurrent plasticity.** There is no weight decay, normalisation or gradient control; divergence
+  is detected after the fact (`DIVERGENCE_LIMIT`). The microstimulus init under exact credit (see the diagnosis
+  above) is the clearest case where the plasticity rule, not the representation, is the problem. Candidates: a
+  per-step bound on $\|\partial V / \partial \mathbf{W}\|$, a spectral-norm penalty, or synaptic scaling.
+* **A trained random network can be unstable without the US.** In the reward-omission experiment of 2008 (999
+  rewarded trials, then one omission), one of the five random-init seeds explodes on the omission trial itself: the
+  value reaches $10^8$ within 100 steps after the expected reward, although all 999 rewarded trials were stable
+  (CR 4.0) and the weights had moved by only $\|\mathbf{W} - \mathbf{W}_0\|_F = 0.23$. The learned recurrent
+  weights have an expanding direction that the US-driven state normally interrupts; without the US the activity
+  runs into it. The same networks survive the early-reward and omitted-second-cue probes, so the instability depends
+  on how long the activity evolves unperturbed (the omission trial has 460 steps without input). This is the
+  strongest argument for a stability mechanism in the plasticity rule (previous item), and it means that probe
+  trials are not harmless for the plastic network: they test the dynamics far from the trained trajectory.
+* **Cost of the exact credit assignment.** 1.9 ms per step against 0.17 ms for the local rule; the five-seed scan is
+  dominated by it (about 12 of the 17 CPU hours). The backward chain stops early when the credit vector is all zero,
+  but with the random init it rarely is. A truncated horizon of 50 steps would cut the cost threefold; whether it
+  changes the results is untested (the step-size scan used 150).
+* **Analyse the learned weights, not only the behaviour.** The dimensionality and the response width are indirect
+  readouts. Storing $\mathbf{W}$ at the recorded trials would allow the eigenvalue spectrum, the growth of the
+  presence self-connection towards $1/\gamma$, and whether the random init builds delay-line-like chains, to be
+  shown directly.
+* **Delta-TD on unreinforced trials at long ISIs.** The integrated value still explodes on probe trials at ISI 100
+  (Fig. 4 and Fig. 6 reproductions, CR 140 and 40). The Q-formulation with action timing remains the proposed fix
+  (see "The missing ingredient").
+* **Seeds.** Five seeds are enough to show that the random-init conclusions are not a property of one weight matrix,
+  but the SD of the step-size summary metrics near the stability boundary (trials to convergence, late fluctuation)
+  will be large; more seeds for the scan alone would be cheap for the local rule.
+* **Response rule and noisy values.** The random init's value fluctuates by about 0.05 within a trial; the leaky
+  integrator with threshold smooths it, but the CR level of a probe trial is a maximum and therefore biased upwards
+  by noise. A comparison of value-based and response-based metrics would show whether that matters.

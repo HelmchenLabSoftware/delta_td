@@ -15,7 +15,11 @@ representations of the TD model of conditioning:
 The simulations reproduce the classical conditioning experiments of Ludvig et al. (2012) (acquisition, ISI effects,
 response timing, blocking, overshadowing) and the dopamine / TD-error experiments of Ludvig et al. (2008) (simple
 acquisition, reward omission, partial reinforcement, early reward, multiple cues) and add the $\Delta$-TD model to
-each comparison. See `docs/model_notes.md` for the equations, the modelling choices and the open questions.
+each comparison, as well as a learnable representation: a rectified recurrent network driven by stimulus onsets whose
+recurrent weights follow a three-factor rule driven by the TD error of its TD($\lambda$) readout (`rnn`). The network
+can be initialized at random or such that its dynamics reproduce the CSC, microstimulus or presence representation;
+the `rnn` study compares how the representation evolves from each initialization. See `docs/model_notes.md` for the
+equations, the modelling choices and the open questions.
 
 ### Installation
 
@@ -32,13 +36,14 @@ conda activate deltatd
 
 ### Execution
 
-Run all simulations (about one minute; results are not versioned) and plot all figures:
+Run all simulations (about one minute without the RNN model, about half an hour with it; results are not versioned)
+and plot all figures:
 ```
 python main.py all
 python main.py simulate       # simulations only -> results/simulation
 python main.py plot           # figures only (needs existing results) -> figures/
 python main.py all --representations csc delta   # restrict to some models
-python main.py all --studies ludvig2008          # restrict to one paper
+python main.py all --studies ludvig2008          # restrict to one paper (or the rnn study)
 ```
 Run the tests:
 ```
@@ -53,7 +58,7 @@ deltatd/
   run_all.py, plot_all.py       run every simulation / plot every figure
   utils/                        paths, string identifiers (ids.py) and all parameter values (constants.py)
   simulation/
-    representations.py          presence, CSC, microstimulus and onset representations
+    representations.py          presence, CSC, microstimulus, onset and learnable recurrent-network representations
     learners.py                 TD(lambda) (Ludvig) and DeltaTD (Schoenfeld) learning rules
     response.py                 thresholded leaky-integrator response rule
     tasks.py                    trial and protocol builders (acquisition, timing, blocking, overshadowing)
@@ -62,7 +67,8 @@ deltatd/
     helper.py                   plotting helpers and the simulate-all-conditions loop
     ludvig2012/                 one module per figure of Ludvig et al. (2012) + fs1_delta_variants, each with simulate() and plot()
     ludvig2008/                 one module per figure of Ludvig et al. (2008), dopamine / TD-error observables
-results/simulation/<study>/<experiment>/<representation>_<condition>.npz   (gitignored)
+    rnn/                        initializations and recurrent step size of the learnable representation
+results/simulation/<study>/<experiment>/<representation>_<condition>[_seed<k>].npz   (gitignored; one file per seed for stochastic runs)
 figures/<study>/<figure>.pdf|png
 docs/model_notes.md             equations, notation mapping, open modelling questions, reproduction status
 tests/                          pytest unit tests of the representations, protocols and learning outcomes

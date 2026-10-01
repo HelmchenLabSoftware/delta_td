@@ -32,14 +32,15 @@ def plot(representations: list[str] = ids.ALL_REPRESENTATIONS) -> None:
         group_labels=ids.REPRESENTATION_LABELS,
         bar_labels=helper.PROBE_LABELS,
     )
-    ax_a.legend(frameon=False)
+    ax_a.legend(frameon=False, title=f5_blocking.seed_note(representations), loc="center left", bbox_to_anchor=(1.02, 0.5))
     isi_phase1, isi_phase2, _ = c.BLOCKING_CONDITIONS[CONDITION]
     for ax, representation in zip(axes[1], representations):
         ax.set_title(ids.REPRESENTATION_LABELS[representation])
-        results = helper.load(STUDY, EXPERIMENT, representation, CONDITION)
+        stats = helper.load_stats(STUDY, EXPERIMENT, representation, CONDITION)
         for k, label in enumerate(helper.PROBE_LABELS):
-            trial = helper.probe_index(results, label)
-            ax.plot(helper.relative_time(results, trial), results[ids.RESPONSE][trial], color=f"C{k}", label=helper.PROBE_LABELS[label])
+            trial = helper.probe_index(stats, label)
+            helper.plot_band(ax, helper.relative_time(stats, trial), stats, ids.RESPONSE, trial, color=f"C{k}", label=helper.PROBE_LABELS[label])
+        helper.annotate_seeds(ax, stats)
         ax.axvline(isi_phase2, color="k", ls=":", lw=0.8)
         ax.axvline(isi_phase1, color="k", ls="--", lw=0.8)
         ax.set_xlim(-10, isi_phase1 + 20)

@@ -1,7 +1,7 @@
-from deltatd.figures import ludvig2008, ludvig2012
+from deltatd.figures import ludvig2008, ludvig2012, rnn
 from deltatd.utils import ids, paths
 
-STUDIES = {ids.LUDVIG2012: ludvig2012, ids.LUDVIG2008: ludvig2008}
+STUDIES = {ids.LUDVIG2012: ludvig2012, ids.LUDVIG2008: ludvig2008, ids.RNN_STUDY: rnn}
 
 
 def plot(representations: list[str] = ids.ALL_REPRESENTATIONS, studies: list[str] = tuple(STUDIES)) -> None:
